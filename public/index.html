@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MisClases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo"><span class="logo-mark">◆</span><span class="logo-text">MisClases</span></div>
+        <button class="sidebar-toggle" id="sidebarClose" onclick="toggleSidebar()">✕</button>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="dashboard" onclick="showView('dashboard')">
+          <span class="nav-icon">⬛</span><span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-view="clases" onclick="showView('clases')">
+          <span class="nav-icon">📚</span><span>Mis Clases</span>
+        </button>
+      </nav>
+      <button class="nav-item" data-view="admin" id="navAdmin" onclick="showView('admin')" style="display:none">
+          <span class="nav-icon">👥</span><span>Usuarios</span>
+        </button>
+      </nav>
+      <nav class="sidebar-nav" style="padding-top:0">
+      <div class="sidebar-section-title" style="padding:.3rem 1rem .2rem">CLASES</div>
+      <div class="sidebar-clases" id="sidebarClases"></div>
+      <div class="sidebar-user" id="sidebarUser"></div>
+    <div class="sidebar-footer">
+        <button class="btn-nueva-clase" onclick="openModalClase()">+ Nueva Clase</button>
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <main class="main" id="main">
+      <div class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()">☰</button>
+        <div class="topbar-logo"><span class="logo-mark">◆</span><span class="logo-text">MisClases</span></div>
+        <button class="btn-primary topbar-add" onclick="openModalClase()">+ Clase</button>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div id="view-dashboard" class="view active">
+        <header class="page-header">
+          <div><h1>Dashboard</h1><p class="subtitle" id="fechaHoy"></p></div>
+          <button class="btn-primary desktop-only" onclick="openModalClase()">+ Nueva Clase</button>
+        </header>
+        <div class="stats-grid" id="statsGlobal"></div>
+        <div class="dashboard-grid">
+          <section class="card"><h2 class="card-title">Resumen de Clases</h2><div id="resumenClases"></div></section>
+          <section class="card"><h2 class="card-title">Proximas Clases</h2><div id="proximasClases"></div></section>
+        </div>
+      </div>
+
+      <!-- CLASES -->
+      <div id="view-clases" class="view">
+        <header class="page-header">
+          <div><h1>Mis Clases</h1><p class="subtitle">Gestion de todas tus materias</p></div>
+          <button class="btn-primary desktop-only" onclick="openModalClase()">+ Nueva Clase</button>
+        </header>
+        <div class="clases-grid" id="clasesGrid"></div>
+      </div>
+
+      <!-- CLASE DETAIL -->
+      <div id="view-clase-detail" class="view">
+        <header class="page-header">
+          <div style="display:flex;align-items:center;gap:.8rem">
+            <button class="btn-back" onclick="showView('clases')">←</button>
+            <div><h1 id="detailNombre"></h1><p class="subtitle" id="detailSubtitle"></p></div>
+          </div>
+          <div class="header-actions">
+            <button class="btn-secondary" id="btnEditClase">✎ Editar</button>
+            <button class="btn-danger" id="btnDeleteClase">✕</button>
+          </div>
+        </header>
+        <div class="stats-grid" id="statsClase"></div>
+        <div class="tabs" id="detailTabs">
+          <button class="tab active" data-tab="alumnos" onclick="switchTab('alumnos')">Alumnos</button>
+          <button class="tab" data-tab="sesiones" onclick="switchTab('sesiones')">Sesiones</button>
+          <button class="tab" data-tab="asistencia" onclick="switchTab('asistencia')">Asistencia</button>
+        </div>
+
+        <!-- TAB ALUMNOS -->
+        <div id="tab-alumnos" class="tab-content active">
+          <div class="tab-header">
+            <input type="text" class="search-input" placeholder="Buscar alumno..." id="searchAlumno" oninput="filterAlumnos()">
+            <button class="btn-primary" onclick="openModalAlumno()">+ Alumno</button>
+          </div>
+          <div class="table-wrap" id="tablaAlumnosWrap">
+            <table class="table" id="tablaAlumnos">
+              <thead id="theadAlumnos"></thead>
+              <tbody id="tbodyAlumnos"></tbody>
+            </table>
+          </div>
+          <!-- Cards mobile -->
+          <div class="alumnos-cards" id="alumnosCards"></div>
+        </div>
+
+        <!-- TAB SESIONES -->
+        <div id="tab-sesiones" class="tab-content">
+          <div class="tab-header">
+            <span class="tab-info" id="sesionesInfo"></span>
+            <button class="btn-primary" onclick="openModalSesion()">+ Sesion</button>
+          </div>
+          <div class="sesiones-list" id="listaSesiones"></div>
+        </div>
+
+        <!-- TAB ASISTENCIA -->
+        <div id="tab-asistencia" class="tab-content">
+          <div class="tab-header">
+            <div><span style="font-size:.9rem;font-weight:600">Tomar asistencia</span><p style="font-size:.8rem;color:var(--text2);margin-top:.2rem">Selecciona una sesion y marca presentes</p></div>
+          </div>
+          <div class="asistencia-layout" id="asistenciaLayout">
+            <div class="card asistencia-sesiones-panel">
+              <div class="card-title">Sesiones</div>
+              <div id="asistenciaSesionesLista"></div>
+            </div>
+            <div id="asistenciaPanel">
+              <div class="empty-state"><div class="empty-icon">☝</div><p>Selecciona una sesion</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- ADMIN -->
+      <div id="view-admin" class="view">
+        <header class="page-header">
+          <div><h1>Usuarios</h1><p class="subtitle">Gestion de profes registrados</p></div>
+        </header>
+        <div id="adminContent"></div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- MODAL CLASE -->
+  <div class="modal-overlay" id="modalClase">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalClaseTitle">Nueva Clase</h3>
+        <button onclick="closeModal('modalClase')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="claseId">
+        <div class="form-group">
+          <label>Nombre de la materia *</label>
+          <input type="text" id="claseNombre" placeholder="Ej: Matematicas 5A">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de cursada</label>
+            <div class="tipo-selector" id="tipoSelector">
+              <button type="button" class="tipo-btn active" data-tipo="cuatrimestral" onclick="selectTipo('cuatrimestral')">
+                <span class="tipo-icon">📅</span>
+                <span class="tipo-label">Cuatrimestral</span>
+                <span class="tipo-sub">3 notas</span>
+              </button>
+              <button type="button" class="tipo-btn" data-tipo="anual" onclick="selectTipo('anual')">
+                <span class="tipo-icon">📆</span>
+                <span class="tipo-label">Anual</span>
+                <span class="tipo-sub">6 notas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Dias de clase</label>
+            <div class="dias-check" id="diasCheck">
+              <label><input type="checkbox" value="Lun"> Lun</label>
+              <label><input type="checkbox" value="Mar"> Mar</label>
+              <label><input type="checkbox" value="Mie"> Mie</label>
+              <label><input type="checkbox" value="Jue"> Jue</label>
+              <label><input type="checkbox" value="Vie"> Vie</label>
+              <label><input type="checkbox" value="Sab"> Sab</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Horas semanales</label>
+            <input type="number" id="claseHoras" min="1" max="40" placeholder="Ej: 4">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Total sesiones planificadas</label>
+            <input type="number" id="claseTotalSesiones" min="1" placeholder="Ej: 30">
+          </div>
+          <div class="form-group">
+            <label>Color</label>
+            <div class="color-picker" id="colorPicker">
+              <span class="color-opt selected" data-color="#FF6B6B" style="background:#FF6B6B"></span>
+              <span class="color-opt" data-color="#4ECDC4" style="background:#4ECDC4"></span>
+              <span class="color-opt" data-color="#45B7D1" style="background:#45B7D1"></span>
+              <span class="color-opt" data-color="#96CEB4" style="background:#96CEB4"></span>
+              <span class="color-opt" data-color="#FFEAA7" style="background:#FFEAA7"></span>
+              <span class="color-opt" data-color="#DDA0DD" style="background:#DDA0DD"></span>
+              <span class="color-opt" data-color="#F4A261" style="background:#F4A261"></span>
+              <span class="color-opt" data-color="#A8E6CF" style="background:#A8E6CF"></span>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descripcion (opcional)</label>
+          <textarea id="claseDesc" placeholder="Notas adicionales..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalClase')">Cancelar</button>
+        <button class="btn-primary" onclick="saveClase()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ALUMNO -->
+  <div class="modal-overlay" id="modalAlumno">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalAlumnoTitle">Agregar Alumno</h3>
+        <button onclick="closeModal('modalAlumno')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="alumnoId">
+        <div class="form-group">
+          <label>Nombre completo *</label>
+          <input type="text" id="alumnoNombre" placeholder="Ej: Juan Garcia">
+        </div>
+        <div id="notasContainer"></div>
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea id="alumnoObs" placeholder="Notas sobre el alumno..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalAlumno')">Cancelar</button>
+        <button class="btn-primary" onclick="saveAlumno()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL SESION -->
+  <div class="modal-overlay" id="modalSesion">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Registrar Sesion</h3>
+        <button onclick="closeModal('modalSesion')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" id="sesionFecha">
+        </div>
+        <div class="form-group">
+          <label>Tema / Contenido</label>
+          <input type="text" id="sesionTema" placeholder="Ej: Introduccion a fracciones">
+        </div>
+        <div class="form-group">
+          <label>Horas dictadas</label>
+          <input type="number" id="sesionHoras" min="0.5" max="8" step="0.5" placeholder="Ej: 2">
+        </div>
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea id="sesionObs" placeholder="Notas de la sesion..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalSesion')">Cancelar</button>
+        <button class="btn-primary" onclick="saveSesion()">Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRM -->
+  <div class="modal-overlay" id="modalConfirm">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Confirmar</h3>
+        <button onclick="closeModal('modalConfirm')">✕</button>
+      </div>
+      <div class="modal-body"><p id="confirmMsg"></p></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalConfirm')">Cancelar</button>
+        <button class="btn-danger" id="confirmBtn">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/app.js"></script>
+</body>
+</html>
