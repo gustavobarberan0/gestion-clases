@@ -24,15 +24,21 @@ const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'misclases-secret-local-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' }
+  cookie: { 
+    maxAge: 7 * 24 * 60 * 60 * 1000, 
+    httpOnly: true, 
+    sameSite: 'lax',
+    secure: !!process.env.DATABASE_URL  // HTTPS en Railway, HTTP en local
+  }
 };
 
 if (USE_PG) {
   const PgSession = ConnectPgSimple(session);
   sessionConfig.store = new PgSession({ pool, tableName: 'user_sessions', createTableIfMissing: true });
-  if (process.env.NODE_ENV === 'production') sessionConfig.cookie.secure = true;
 }
 
+// Necesario para que las cookies funcionen detras de proxy HTTPS (Railway)
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(session(sessionConfig));
 

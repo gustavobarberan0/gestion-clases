@@ -94,10 +94,10 @@
       if (!email || !password) return showError('loginError', 'Completa todos los campos');
       setLoading('loginBtn', true);
       try {
-        const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, password}) });
+        const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({email, password}) });
         const data = await res.json();
         if (!res.ok) { showError('loginError', data.error); setLoading('loginBtn', false); return; }
-        window.location.href = '/';
+        window.location.replace('/');
       } catch(e) { showError('loginError', 'Error de conexión'); setLoading('loginBtn', false); }
     }
 
@@ -109,10 +109,10 @@
       if (!nombre || !email || !password) return showError('registerError', 'Completa todos los campos');
       setLoading('registerBtn', true);
       try {
-        const res = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nombre, email, password}) });
+        const res = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({nombre, email, password}) });
         const data = await res.json();
         if (!res.ok) { showError('registerError', data.error); setLoading('registerBtn', false); return; }
-        window.location.href = '/';
+        window.location.replace('/');
       } catch(e) { showError('registerError', 'Error de conexión'); setLoading('registerBtn', false); }
     }
 

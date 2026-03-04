@@ -4,9 +4,9 @@ let currentUser = null;
 
 async function checkAuth() {
   try {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) {
-      window.location.href = '/login.html';
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    if (res.status === 401) {
+      window.location.replace('/login.html');
       return false;
     }
     const user = await res.json();
@@ -17,7 +17,7 @@ async function checkAuth() {
     }
     return true;
   } catch (e) {
-    window.location.href = '/login.html';
+    window.location.replace('/login.html');
     return false;
   }
 }
@@ -114,7 +114,7 @@ function confirmDeleteUser(userId, nombre) {
 async function deleteUser(userId) {
   closeModal('modalConfirm');
   try {
-    await fetch('/api/admin/usuarios/' + userId, { method: 'DELETE' });
+    await fetch('/api/admin/usuarios/' + userId, { method: 'DELETE', credentials: 'same-origin' });
     showToast('Usuario eliminado', 'success');
     renderAdminPanel();
   } catch (e) { showToast('Error', 'error'); }
@@ -569,13 +569,13 @@ async function saveClase() {
   const id = document.getElementById('claseId').value;
   try {
     if (id) {
-      const res = await fetch(API + '/clases/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(API + '/clases/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
       const updated = await res.json();
       const idx = data.clases.findIndex(c => c.id === id);
       if (idx !== -1) data.clases[idx] = Object.assign({}, data.clases[idx], updated);
       showToast('Clase actualizada', 'success');
     } else {
-      const res = await fetch(API + '/clases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(API + '/clases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
       data.clases.push(await res.json());
       showToast('Clase creada', 'success');
     }
@@ -629,12 +629,12 @@ async function saveAlumno() {
   const id = document.getElementById('alumnoId').value;
   try {
     if (id) {
-      await fetch(API + '/clases/' + currentClaseId + '/alumnos/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      await fetch(API + '/clases/' + currentClaseId + '/alumnos/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
       const idx = clase.alumnos.findIndex(a => a.id === id);
       if (idx !== -1) clase.alumnos[idx] = Object.assign({}, clase.alumnos[idx], body);
       showToast('Alumno actualizado', 'success');
     } else {
-      const res = await fetch(API + '/clases/' + currentClaseId + '/alumnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(API + '/clases/' + currentClaseId + '/alumnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
       clase.alumnos.push(await res.json());
       showToast('Alumno agregado', 'success');
     }
@@ -654,7 +654,7 @@ async function saveSesion() {
   if (!fecha) { showToast('La fecha es requerida', 'error'); return; }
   const body = { fecha, tema: document.getElementById('sesionTema').value, horas: parseFloat(document.getElementById('sesionHoras').value) || 0, obs: document.getElementById('sesionObs').value };
   try {
-    const res = await fetch(API + '/clases/' + currentClaseId + '/sesiones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(API + '/clases/' + currentClaseId + '/sesiones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
     data.clases.find(c => c.id === currentClaseId).sesiones.push(await res.json());
     closeModal('modalSesion'); renderClaseDetail(currentClaseId); renderDashboard();
     showToast('Sesion registrada', 'success');
@@ -663,7 +663,7 @@ async function saveSesion() {
 
 async function deleteSesion(sesionId) {
   try {
-    await fetch(API + '/clases/' + currentClaseId + '/sesiones/' + sesionId, { method: 'DELETE' });
+    await fetch(API + '/clases/' + currentClaseId + '/sesiones/' + sesionId, { method: 'DELETE', credentials: 'same-origin' });
     const clase = data.clases.find(c => c.id === currentClaseId);
     clase.sesiones = clase.sesiones.filter(s => s.id !== sesionId);
     delete asistenciaTemp[sesionId];
@@ -682,11 +682,11 @@ async function doDelete(type, id) {
   closeModal('modalConfirm');
   try {
     if (type === 'clase') {
-      await fetch(API + '/clases/' + id, { method: 'DELETE' });
+      await fetch(API + '/clases/' + id, { method: 'DELETE', credentials: 'same-origin' });
       data.clases = data.clases.filter(c => c.id !== id);
       currentClaseId = null; showToast('Clase eliminada', 'success'); showView('clases'); renderAll();
     } else {
-      await fetch(API + '/clases/' + currentClaseId + '/alumnos/' + id, { method: 'DELETE' });
+      await fetch(API + '/clases/' + currentClaseId + '/alumnos/' + id, { method: 'DELETE', credentials: 'same-origin' });
       const clase = data.clases.find(c => c.id === currentClaseId);
       clase.alumnos = clase.alumnos.filter(a => a.id !== id);
       renderClaseDetail(currentClaseId); showToast('Alumno eliminado', 'success');
