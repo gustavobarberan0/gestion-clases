@@ -238,6 +238,10 @@ function saveJSON(data) {
 }
 
 // ── PARSERS DE PLANILLAS ───────────────────────────────────────────────────────
+function toTitleCase(str) {
+  if (!str) return '';
+  return str.toLowerCase().replace(/(?:^|\s)\S/g, l => l.toUpperCase());
+}
 function normCol(str) {
   return String(str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 }
@@ -261,7 +265,7 @@ function mapearFila(fila) {
 function parsearExcel(buffer, filename) {
   const wb = XLSX.read(buffer, { type: 'buffer' });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: '' }).map(mapearFila).filter(r => r.nombre);
+  return XLSX.utils.sheet_to_json(ws, { defval: '' }).map(mapearFila).filter(r => r.nombre).map(r => ({ ...r, nombre: toTitleCase(r.nombre) }));
 }
 async function parsearDocx(buffer) {
   const { value } = await mammoth.extractRawText({ buffer });
@@ -289,16 +293,48 @@ async function parsearDocx(buffer) {
 async function parsearPDF(buffer) {
   const data = await pdfParse(buffer);
   const lines = data.text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-  const alumnos = [];
+
+  // ── Estrategia 1: Acta institucional argentina ─────────────────────────────
+  // Formato: " 1 - 37887853 ALCALDE SAMUEL JOSE 7 80 - - PROMOCIONAL"
+  const PATRON_ACTA = /^\d+\s*[-–]\s*(\d{6,9})\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}?)(?:\s+[\d\-–][\d\s\-–])/i;
+  const actaAlumnos = [];
+  for (const line of lines) {
+    const m = line.match(PATRON_ACTA);
+    if (m) {
+      const dni    = m[1].trim();
+      const nombre = toTitleCase(m[2].trim());
+      if (nombre.split(' ').length >= 2) { // al menos nombre y apellido
+        actaAlumnos.push({ nombre, dni, email: '' });
+      }
+    }
+  }
+  if (actaAlumnos.length > 0) return actaAlumnos;
+
+  // ── Estrategia 2: PDF con encabezados (Nombre, Email, DNI) ─────────────────
   const firstNorm = normCol(lines[0]||'');
-  const inicio = (firstNorm.includes('nombre') || firstNorm.includes('alumno')) ? 1 : 0;
-  for (let i = inicio; i < lines.length; i++) {
-    const parts = lines[i].split(/[\t,;|]/).map(p => p.trim());
-    if (parts[0] && parts[0].length > 1 && isNaN(parts[0]))
-      alumnos.push({ nombre: parts[0], email: parts[1]||'', dni: parts[2]||'' });
+  if (firstNorm.includes('nombre') || firstNorm.includes('alumno')) {
+    const alumnos = [];
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(/[\t,;|]/).map(p => p.trim());
+      if (parts[0] && parts[0].length > 2 && isNaN(parts[0]))
+        alumnos.push({ nombre: parts[0], email: parts[1]||'', dni: parts[2]||'' });
+    }
+    if (alumnos.length > 0) return alumnos;
+  }
+
+  // ── Estrategia 3: Una línea = un alumno (lista simple) ─────────────────────
+  const IGNORAR = /total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|page|\d{4}$/i;
+  const alumnos = [];
+  for (const line of lines) {
+    if (IGNORAR.test(line)) continue;
+    const parts = line.split(/[\t,;|]/).map(p => p.trim());
+    const nombre = parts[0];
+    if (nombre && nombre.length > 3 && isNaN(nombre) && nombre.split(' ').length >= 2)
+      alumnos.push({ nombre: toTitleCase(nombre), email: parts[1]||'', dni: parts[2]||'' });
   }
   return alumnos;
 }
+
 
 // ── Static ─────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
