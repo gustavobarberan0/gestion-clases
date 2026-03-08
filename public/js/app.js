@@ -31,8 +31,7 @@ function renderUserBar() {
     '<div class="user-info">' +
     '<div class="user-name">' + currentUser.nombre + '</div>' +
     '<div class="user-rol">' + (isAdmin ? '★ Administrador' : 'Profe') + '</div>' +
-    '</div>' +
-    '<button class="user-logout" onclick="doLogout()" title="Cerrar sesion">&#10005;</button>';
+    '</div>';
 }
 
 async function doLogout() {
@@ -86,7 +85,7 @@ async function renderAdminPanel() {
 
     container.innerHTML =
       '<div class="admin-table-wrap"><table class="admin-table">' +
-      '<thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Clases</th><th>Registro</th><th></th></tr></thead>' +
+      '<thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Clases</th><th>Registro</th><th>T&C</th><th></th></tr></thead>' +
       '<tbody>' + tableRows + '</tbody></table></div>' +
       '<div class="admin-cards">' + mobileCards + '</div>';
   } catch (e) {

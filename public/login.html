@@ -61,6 +61,14 @@
         <div class="form-group"><label>Nombre completo</label><input type="text" id="regNombre" placeholder="Prof. Juan García" autocomplete="name"></div>
         <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="tu@email.com" autocomplete="email"></div>
         <div class="form-group"><label>Contraseña <span style="color:var(--text2)">(mín. 6 caracteres)</span></label><input type="password" id="regPassword" placeholder="••••••" autocomplete="new-password"></div>
+        <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.3rem 0">
+          <input type="checkbox" id="aceptoTerminos" style="margin-top:.2rem;accent-color:#7C6FFF;cursor:pointer;flex-shrink:0">
+          <label for="aceptoTerminos" style="font-size:.82rem;color:#9090A8;cursor:pointer;line-height:1.45">
+            He leído y acepto los
+            <a href="/terminos.html" target="_blank" style="color:#7C6FFF;text-decoration:none">Términos y Condiciones y la Política de Privacidad</a>
+            de MisClases.
+          </label>
+        </div>
         <button class="btn btn-primary" id="registerBtn" onclick="doRegister()">Crear cuenta</button>
         <p class="hint">El primer usuario registrado<br>se convierte en administrador.</p>
       </div>
@@ -107,9 +115,10 @@
       const email = document.getElementById('regEmail').value.trim();
       const password = document.getElementById('regPassword').value;
       if (!nombre || !email || !password) return showError('registerError', 'Completa todos los campos');
+      if (!document.getElementById('aceptoTerminos').checked) return showError('registerError', 'Debés aceptar los Términos y Condiciones para registrarte');
       setLoading('registerBtn', true);
       try {
-        const res = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({nombre, email, password}) });
+        const res = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({nombre, email, password, terminos_aceptados: true}) });
         const data = await res.json();
         if (!res.ok) { showError('registerError', data.error); setLoading('registerBtn', false); return; }
         window.location.replace('/');

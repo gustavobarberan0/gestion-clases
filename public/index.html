@@ -31,6 +31,7 @@
       <div class="sidebar-section-title" style="padding:.3rem 1rem .2rem">CLASES</div>
       <div class="sidebar-clases" id="sidebarClases"></div>
       <div class="sidebar-user" id="sidebarUser"></div>
+    <button class="btn-logout-full" onclick="doLogout()">&#10148; Cerrar sesión</button>
     <div class="sidebar-footer">
         <button class="btn-nueva-clase" onclick="openModalClase()">+ Nueva Clase</button>
       </div>
@@ -90,6 +91,7 @@
         <div id="tab-alumnos" class="tab-content active">
           <div class="tab-header">
             <input type="text" class="search-input" placeholder="Buscar alumno..." id="searchAlumno" oninput="filterAlumnos()">
+            <button class="btn-secondary" onclick="openModalImportar()" title="Importar desde Excel, CSV, PDF o Word">&#8613; Importar</button>
             <button class="btn-primary" onclick="openModalAlumno()">+ Alumno</button>
           </div>
           <div class="table-wrap" id="tablaAlumnosWrap">
@@ -289,7 +291,60 @@
     </div>
   </div>
 
+  <!-- MODAL IMPORTAR -->
+  <div class="modal-overlay" id="modalImportar">
+    <div class="modal" style="max-width:580px">
+      <div class="modal-header">
+        <h3>Importar Alumnos</h3>
+        <button onclick="closeModal('modalImportar')">✕</button>
+      </div>
+      <div class="modal-body" id="importarBody">
+        <!-- Estado: selección de archivo -->
+        <div id="importStep1">
+          <div class="import-zone" id="importZone">
+            <input type="file" id="importFile" accept=".xlsx,.xls,.csv,.pdf,.docx,.txt" onchange="handleImportFile(this)">
+            <div class="import-icon">&#8613;</div>
+            <div class="import-title">Arrastrá o hacé clic para seleccionar</div>
+            <div class="import-sub">El archivo debe tener columnas: Nombre, Email, DNI</div>
+            <div class="import-formats">
+              <span class="format-tag">Excel .xlsx</span>
+              <span class="format-tag">CSV .csv</span>
+              <span class="format-tag">PDF .pdf</span>
+              <span class="format-tag">Word .docx</span>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:.8rem">
+            <a href="/api/plantilla-alumnos" class="plantilla-link" download>&#8615; Descargar plantilla modelo</a>
+          </div>
+        </div>
+        <!-- Estado: preview -->
+        <div id="importStep2" style="display:none">
+          <p class="preview-count" id="previewCount"></p>
+          <div class="preview-table-wrap">
+            <table class="preview-table">
+              <thead><tr><th>#</th><th>Nombre</th><th>Email</th><th>DNI</th></tr></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+          <p style="font-size:.76rem;color:var(--text2);margin-top:.6rem">Los alumnos que ya existen en la clase no se duplicarán.</p>
+        </div>
+        <!-- Estado: procesando -->
+        <div id="importStep3" style="display:none">
+          <div class="import-progress">
+            <span class="import-spinner">⟳</span>
+            <p>Procesando archivo...</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" id="importFooter">
+        <button class="btn-secondary" onclick="resetImport()">Cancelar</button>
+        <button class="btn-primary" id="btnConfirmImport" style="display:none" onclick="confirmarImport()">&#10003; Importar alumnos</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <script src="js/app.js"></script>
+  <script src="js/import.js"></script>
 </body>
 </html>

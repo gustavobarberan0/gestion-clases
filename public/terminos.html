@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Términos y Política de Privacidad — MisClases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#0F0F13; --bg2:#16161C; --bg3:#1E1E26;
+      --border:#2A2A36; --text:#E8E8F0; --text2:#9090A8;
+      --accent:#7C6FFF;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); line-height: 1.75; padding: 2rem 1rem 4rem; }
+    .container { max-width: 760px; margin: 0 auto; }
+    .header { display: flex; align-items: center; gap: .8rem; margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: .5rem; text-decoration: none; }
+    .logo-mark { color: var(--accent); font-size: 1.2rem; }
+    .logo-text { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; color: var(--text); }
+    .back-link { margin-left: auto; color: var(--text2); font-size: .85rem; text-decoration: none; border: 1px solid var(--border); padding: .35rem .8rem; border-radius: 8px; transition: all .2s; }
+    .back-link:hover { color: var(--accent); border-color: var(--accent); }
+    .doc-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem; margin-bottom: .4rem; }
+    .doc-meta { color: var(--text2); font-size: .85rem; margin-bottom: 3rem; }
+    .doc-meta span { background: var(--bg2); border: 1px solid var(--border); padding: .2rem .6rem; border-radius: 20px; margin-right: .4rem; }
+    .toc { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.5rem; margin-bottom: 2.5rem; }
+    .toc-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: .85rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: .8rem; }
+    .toc ol { padding-left: 1.2rem; display: flex; flex-direction: column; gap: .3rem; }
+    .toc a { color: var(--accent); font-size: .88rem; text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    h2 { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.2rem; margin: 2.5rem 0 .8rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--accent); }
+    h2:first-of-type { border-top: none; }
+    p { margin-bottom: .9rem; font-size: .95rem; color: #C8C8D8; }
+    ul, ol { padding-left: 1.5rem; margin-bottom: .9rem; }
+    li { margin-bottom: .4rem; font-size: .95rem; color: #C8C8D8; }
+    strong { color: var(--text); }
+    .highlight { background: rgba(124,111,255,.08); border-left: 3px solid var(--accent); padding: .8rem 1rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+    .highlight p { margin: 0; }
+    .contact-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.5rem; margin-top: 2rem; }
+    .contact-box p { margin: 0; }
+    .footer-note { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: .8rem; color: var(--text2); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="logo">
+        <span class="logo-mark">◆</span>
+        <span class="logo-text">MisClases</span>
+      </a>
+      <a href="/login.html" class="back-link">← Volver</a>
+    </div>
+
+    <div class="doc-title">Términos y Condiciones<br>y Política de Privacidad</div>
+    <div class="doc-meta">
+      <span>Versión 1.0</span>
+      <span>Vigente desde 08 de marzo de 2026</span>
+      <span>Argentina — Ley 25.326</span>
+    </div>
+
+    <div class="toc">
+      <div class="toc-title">Contenido</div>
+      <ol>
+        <li><a href="#s1">Aceptación de los términos</a></li>
+        <li><a href="#s2">Descripción del servicio</a></li>
+        <li><a href="#s3">Registro y responsabilidad del usuario</a></li>
+        <li><a href="#s4">Datos personales que recopilamos</a></li>
+        <li><a href="#s5">Finalidad del tratamiento de datos</a></li>
+        <li><a href="#s6">Datos de alumnos cargados por el docente</a></li>
+        <li><a href="#s7">Seguridad de la información</a></li>
+        <li><a href="#s8">Derechos del titular de los datos</a></li>
+        <li><a href="#s9">Conservación y eliminación de datos</a></li>
+        <li><a href="#s10">Limitación de responsabilidad</a></li>
+        <li><a href="#s11">Modificaciones al servicio y a estos términos</a></li>
+        <li><a href="#s12">Ley aplicable y jurisdicción</a></li>
+        <li><a href="#s13">Contacto</a></li>
+      </ol>
+    </div>
+
+    <!-- 1 -->
+    <h2 id="s1">1. Aceptación de los términos</h2>
+    <p>Al registrarse en <strong>MisClases</strong> y hacer clic en "Acepto los términos y condiciones", usted declara haber leído, comprendido y aceptado en su totalidad los presentes Términos y Condiciones de Uso y la Política de Privacidad.</p>
+    <p>Si no está de acuerdo con alguna de estas condiciones, no debe utilizar el servicio.</p>
+    <div class="highlight">
+      <p>La aceptación queda registrada con fecha, hora e identificador de usuario. Este registro puede ser consultado en caso de disputa.</p>
+    </div>
+
+    <!-- 2 -->
+    <h2 id="s2">2. Descripción del servicio</h2>
+    <p><strong>MisClases</strong> es una plataforma web destinada exclusivamente a docentes para la gestión de clases, seguimiento de alumnos, registro de asistencia y calificaciones. El servicio se ofrece mediante acceso mediante usuario y contraseña.</p>
+    <p>El servicio puede incluir las siguientes funcionalidades:</p>
+    <ul>
+      <li>Creación y gestión de materias/clases</li>
+      <li>Carga manual e importación de listas de alumnos</li>
+      <li>Registro de notas y asistencia</li>
+      <li>Generación de estadísticas de seguimiento académico</li>
+    </ul>
+
+    <!-- 3 -->
+    <h2 id="s3">3. Registro y responsabilidad del usuario</h2>
+    <p>Para utilizar el servicio, el usuario debe registrarse con nombre completo, dirección de correo electrónico válida y una contraseña segura.</p>
+    <p>El usuario es responsable de:</p>
+    <ul>
+      <li>Mantener la confidencialidad de sus credenciales de acceso.</li>
+      <li>Todas las acciones realizadas desde su cuenta.</li>
+      <li>Notificar de forma inmediata cualquier uso no autorizado de su cuenta.</li>
+      <li>Asegurarse de que los datos de terceros que ingrese al sistema cuenten con la debida habilitación legal o autorización.</li>
+    </ul>
+    <p>Queda prohibido compartir credenciales, crear cuentas de forma automatizada o utilizar el servicio con fines distintos a la gestión docente.</p>
+
+    <!-- 4 -->
+    <h2 id="s4">4. Datos personales que recopilamos</h2>
+    <p>En cumplimiento de la <strong>Ley N° 25.326 de Protección de los Datos Personales</strong> de la República Argentina y su decreto reglamentario N° 1558/2001, informamos que MisClases recopila los siguientes datos del docente registrado:</p>
+    <ul>
+      <li><strong>Nombre completo:</strong> para identificación dentro de la plataforma.</li>
+      <li><strong>Dirección de correo electrónico:</strong> utilizada como identificador de acceso.</li>
+      <li><strong>Contraseña:</strong> almacenada de forma cifrada mediante algoritmo bcrypt. No es accesible en texto plano por ningún miembro del equipo.</li>
+      <li><strong>Fecha y hora de registro:</strong> para auditoría y soporte.</li>
+      <li><strong>Registro de aceptación de términos:</strong> fecha, hora y versión aceptada.</li>
+    </ul>
+    <p>No recopilamos datos de geolocalización, información financiera ni datos sensibles según la definición del artículo 2 de la Ley 25.326.</p>
+
+    <!-- 5 -->
+    <h2 id="s5">5. Finalidad del tratamiento de datos</h2>
+    <p>Los datos del docente son utilizados exclusivamente para:</p>
+    <ul>
+      <li>Autenticar el acceso al servicio.</li>
+      <li>Identificar al docente propietario de cada conjunto de datos.</li>
+      <li>Brindar soporte técnico cuando sea solicitado.</li>
+      <li>Enviar comunicaciones relacionadas con el servicio (cambios en los términos, interrupciones planificadas, etc.).</li>
+    </ul>
+    <p><strong>Los datos no serán vendidos, cedidos ni compartidos con terceros</strong> con fines comerciales o publicitarios, en ninguna circunstancia.</p>
+
+    <!-- 6 -->
+    <h2 id="s6">6. Datos de alumnos cargados por el docente</h2>
+    <div class="highlight">
+      <p>Este punto es especialmente sensible dado que puede involucrar datos de menores de edad.</p>
+    </div>
+    <p>Los datos de alumnos (nombre, DNI, email, notas, asistencia) son ingresados directamente por el docente y permanecen bajo su exclusiva responsabilidad. A este respecto:</p>
+    <ul>
+      <li>El docente declara contar con la autorización o habilitación institucional correspondiente para tratar dichos datos en el marco de su actividad educativa.</li>
+      <li>MisClases actúa como <strong>encargado del tratamiento</strong> en los términos del artículo 25 de la Ley 25.326, limitándose a almacenar y mostrar los datos según las instrucciones del docente.</li>
+      <li>Los datos de alumnos no son accesibles para otros usuarios del sistema, ni son utilizados por MisClases para ningún fin propio.</li>
+      <li>El docente es responsable de informar a los alumnos o a sus tutores legales (en caso de menores) sobre el tratamiento de sus datos, de acuerdo con la normativa vigente.</li>
+      <li>Si un alumno o su tutor solicita la eliminación de sus datos, el docente es responsable de tramitar dicha solicitud eliminando la información correspondiente de la plataforma.</li>
+    </ul>
+
+    <!-- 7 -->
+    <h2 id="s7">7. Seguridad de la información</h2>
+    <p>MisClases implementa medidas técnicas y organizativas orientadas a proteger los datos almacenados, entre ellas:</p>
+    <ul>
+      <li>Comunicaciones cifradas mediante HTTPS (TLS).</li>
+      <li>Contraseñas almacenadas con hash bcrypt (factor de coste 12).</li>
+      <li>Sesiones seguras con cookies <em>httpOnly</em>, <em>secure</em> y <em>sameSite</em>.</li>
+      <li>Limitación de intentos de acceso para prevenir ataques de fuerza bruta.</li>
+      <li>Aislamiento de datos por usuario en base de datos relacional.</li>
+      <li>Headers de seguridad HTTP (Content-Security-Policy, HSTS, X-Frame-Options).</li>
+    </ul>
+    <p>No obstante, ningún sistema es 100% inviolable. En caso de detectar una brecha de seguridad que afecte datos personales, notificaremos a los usuarios afectados en el menor tiempo posible.</p>
+
+    <!-- 8 -->
+    <h2 id="s8">8. Derechos del titular de los datos</h2>
+    <p>En virtud del artículo 14 de la Ley 25.326, el titular de los datos personales tiene derecho a:</p>
+    <ul>
+      <li><strong>Acceso:</strong> solicitar qué datos personales suyos están almacenados.</li>
+      <li><strong>Rectificación:</strong> corregir datos inexactos o incompletos.</li>
+      <li><strong>Supresión:</strong> solicitar la eliminación de sus datos ("derecho al olvido").</li>
+      <li><strong>Confidencialidad:</strong> oponerse al tratamiento de sus datos para fines distintos a los declarados.</li>
+    </ul>
+    <p>Para ejercer cualquiera de estos derechos, el usuario puede eliminar su cuenta desde la plataforma o contactarnos mediante el canal indicado en la sección 13. Las solicitudes serán respondidas dentro de los <strong>10 días hábiles</strong> conforme lo establece el artículo 14 de la ley.</p>
+    <p>Asimismo, el titular tiene derecho a interponer una denuncia ante la <strong>Agencia de Acceso a la Información Pública (AAIP)</strong>, organismo de control en materia de protección de datos personales en Argentina.</p>
+
+    <!-- 9 -->
+    <h2 id="s9">9. Conservación y eliminación de datos</h2>
+    <p>Los datos del docente se conservan mientras la cuenta permanezca activa. Ante la eliminación de la cuenta:</p>
+    <ul>
+      <li>Todos los datos del docente y sus clases son eliminados de forma permanente e irreversible de la base de datos activa.</li>
+      <li>Pueden existir copias de seguridad técnicas que se eliminarán en el ciclo de rotación habitual (máximo 30 días).</li>
+    </ul>
+    <p>MisClases no conserva datos personales más allá del tiempo necesario para cumplir con la finalidad para la que fueron recopilados.</p>
+
+    <!-- 10 -->
+    <h2 id="s10">10. Limitación de responsabilidad</h2>
+    <p>MisClases se ofrece <strong>"tal como está"</strong>. No garantizamos disponibilidad ininterrumpida del servicio. No somos responsables por:</p>
+    <ul>
+      <li>Pérdida de datos causada por error del usuario.</li>
+      <li>Interrupciones del servicio por causas ajenas a nuestro control (fallas del proveedor de hosting, desastres naturales, etc.).</li>
+      <li>El uso que el docente haga de los datos de sus alumnos fuera de la plataforma.</li>
+      <li>Daños indirectos, pérdida de ingresos o perjuicios derivados del uso o imposibilidad de uso del servicio.</li>
+    </ul>
+
+    <!-- 11 -->
+    <h2 id="s11">11. Modificaciones al servicio y a estos términos</h2>
+    <p>Nos reservamos el derecho de modificar estos Términos y Condiciones en cualquier momento. Ante cambios sustanciales, notificaremos a los usuarios registrados por correo electrónico con al menos <strong>15 días de anticipación</strong>.</p>
+    <p>El uso continuado del servicio tras la entrada en vigencia de los nuevos términos implica su aceptación. Si el usuario no acepta los cambios, deberá discontinuar el uso del servicio y puede solicitar la eliminación de su cuenta.</p>
+
+    <!-- 12 -->
+    <h2 id="s12">12. Ley aplicable y jurisdicción</h2>
+    <p>Los presentes Términos y Condiciones se rigen por las leyes de la <strong>República Argentina</strong>, en particular la Ley N° 25.326 de Protección de los Datos Personales, la Ley N° 24.240 de Defensa del Consumidor y demás normativa aplicable.</p>
+    <p>Ante cualquier controversia, las partes se someten a la jurisdicción de los <strong>Tribunales Ordinarios de la Ciudad Autónoma de Buenos Aires</strong>, renunciando a cualquier otro fuero que pudiera corresponder.</p>
+
+    <!-- 13 -->
+    <h2 id="s13">13. Contacto</h2>
+    <div class="contact-box">
+      <p>Para consultas sobre privacidad, ejercicio de derechos o cualquier duda relacionada con estos términos, podés contactarnos a través de la dirección de correo electrónico indicada en la plataforma o mediante el formulario de soporte disponible en la aplicación.</p>
+      <p style="margin-top:.6rem;color:var(--text2);font-size:.85rem">Responsable del tratamiento de datos: <strong style="color:var(--text)">MisClases</strong> — Argentina</p>
+    </div>
+
+    <div class="footer-note">
+      Documento generado el 08 de marzo de 2026 · Versión 1.0 · Ley 25.326 (Argentina)<br>
+      <a href="/login.html" style="color:var(--accent);text-decoration:none;margin-top:.4rem;display:inline-block">← Volver al inicio</a>
+    </div>
+  </div>
+</body>
+</html>

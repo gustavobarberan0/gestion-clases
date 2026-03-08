@@ -1,78 +1,191 @@
-const express = require('express');
-const path = require('path');
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
-const session = require('express-session');
-const ConnectPgSimple = require('connect-pg-simple');
-const fs = require('fs');
+/**
+ * MisClases v4 — Servidor principal
+ * Seguridad: Helmet, Rate Limiting, Validación, SQL parametrizado, HTTPS forzado
+ */
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const USE_PG = !!process.env.DATABASE_URL;
+'use strict';
 
-// ── Pool PostgreSQL ─────────────────────────────────────────────────────────────
+const express      = require('express');
+const path         = require('path');
+const { Pool }     = require('pg');
+const bcrypt       = require('bcryptjs');
+const session      = require('express-session');
+const ConnectPg    = require('connect-pg-simple');
+const helmet       = require('helmet');
+const rateLimit    = require('express-rate-limit');
+const multer       = require('multer');
+const XLSX         = require('xlsx');
+const mammoth      = require('mammoth');
+const pdfParse     = require('pdf-parse');
+const { body, validationResult } = require('express-validator');
+const cookieParser = require('cookie-parser');
+const fs           = require('fs');
+const crypto       = require('crypto');
+
+const app     = express();
+const PORT    = process.env.PORT || 3000;
+const USE_PG  = !!process.env.DATABASE_URL;
+const IS_PROD = !!process.env.DATABASE_URL;
+
+// ── Pool PostgreSQL ────────────────────────────────────────────────────────────
 let pool = null;
 if (USE_PG) {
-  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  pool.on('error', (err) => console.error('DB pool error:', err.message));
   console.log('Modo: PostgreSQL');
 } else {
-  console.log('Modo: JSON local (sin autenticacion multi-usuario)');
+  console.log('Modo: JSON local');
 }
 
-// ── Sesiones ────────────────────────────────────────────────────────────────────
+// ── Trust proxy (Railway usa HTTPS via proxy) ──────────────────────────────────
+app.set('trust proxy', 1);
+
+// ── Helmet — headers de seguridad HTTP ────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+      fontSrc:    ["'self'", "https://fonts.gstatic.com"],
+      imgSrc:     ["'self'", "data:"],
+      connectSrc: ["'self'"],
+    },
+  },
+  hsts: IS_PROD ? { maxAge: 31536000, includeSubDomains: true } : false,
+}));
+
+// Forzar HTTPS en producción
+if (IS_PROD) {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(301, 'https://' + req.headers.host + req.url);
+    }
+    next();
+  });
+}
+
+// ── Rate limiting ──────────────────────────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes, intentá en 15 minutos' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos, intentá en 15 minutos' },
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Demasiadas subidas, esperá un momento' },
+});
+
+app.use(globalLimiter);
+
+// ── Sesiones ───────────────────────────────────────────────────────────────────
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
 const sessionConfig = {
-  secret: process.env.SESSION_SECRET || 'misclases-secret-local-2024',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { 
-    maxAge: 7 * 24 * 60 * 60 * 1000, 
-    httpOnly: true, 
+  name: 'mc_sid',
+  cookie: {
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
     sameSite: 'lax',
-    secure: !!process.env.DATABASE_URL  // HTTPS en Railway, HTTP en local
-  }
+    secure:   IS_PROD,
+  },
 };
 
 if (USE_PG) {
-  const PgSession = ConnectPgSimple(session);
-  sessionConfig.store = new PgSession({ pool, tableName: 'user_sessions', createTableIfMissing: true });
+  const PgSession = ConnectPg(session);
+  sessionConfig.store = new PgSession({
+    pool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true,
+  });
 }
 
-// Necesario para que las cookies funcionen detras de proxy HTTPS (Railway)
-app.set('trust proxy', 1);
-app.use(express.json());
+app.use(cookieParser());
+app.use(express.json({ limit: '2mb' }));
 app.use(session(sessionConfig));
 
-// ── Init tablas ─────────────────────────────────────────────────────────────────
+// ── Multer — upload en memoria ─────────────────────────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExts = ['.xlsx', '.xls', '.csv', '.docx', '.pdf', '.txt'];
+    if (allowedExts.includes(ext)) cb(null, true);
+    else cb(new Error('Formato no soportado. Usá .xlsx, .csv, .docx o .pdf'));
+  },
+});
+
+// ── Init tablas ────────────────────────────────────────────────────────────────
 async function initDB() {
   if (!USE_PG) return;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS usuarios (
-      id TEXT PRIMARY KEY,
-      nombre TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      rol TEXT NOT NULL DEFAULT 'profe',
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      id                   TEXT PRIMARY KEY,
+      nombre               TEXT NOT NULL,
+      email                TEXT UNIQUE NOT NULL,
+      password             TEXT NOT NULL,
+      rol                  TEXT NOT NULL DEFAULT 'profe',
+      terminos_aceptados   BOOLEAN NOT NULL DEFAULT FALSE,
+      terminos_fecha       TIMESTAMPTZ,
+      terminos_version     TEXT DEFAULT '1.0',
+      created_at           TIMESTAMPTZ DEFAULT NOW()
     );
+    -- Agregar columnas si ya existe la tabla (migracion segura)
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS terminos_aceptados BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS terminos_fecha TIMESTAMPTZ;
+    ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS terminos_version TEXT DEFAULT '1.0';
     CREATE TABLE IF NOT EXISTS clases (
-      id TEXT PRIMARY KEY,
+      id         TEXT PRIMARY KEY,
       usuario_id TEXT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-      data JSONB NOT NULL
+      data       JSONB NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_clases_usuario ON clases(usuario_id);
   `);
   console.log('Tablas listas');
 }
 
-// ── Middleware auth ─────────────────────────────────────────────────────────────
+// ── Middleware auth ────────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
-  if (!req.session.userId) return res.status(401).json({ error: 'No autenticado' });
+  if (!req.session || !req.session.userId) return res.status(401).json({ error: 'No autenticado' });
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.userId) return res.status(401).json({ error: 'No autenticado' });
+  if (req.session.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
   next();
 }
 
-function requireAdmin(req, res, next) {
-  if (!req.session.userId) return res.status(401).json({ error: 'No autenticado' });
-  if (req.session.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
-  next();
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function sanitizeStr(str) {
+  if (typeof str !== 'string') return '';
+  return str.trim().substring(0, 500);
+}
+function validarResultado(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { res.status(400).json({ error: errors.array()[0].msg }); return false; }
+  return true;
 }
 
 // ── Helpers PG ─────────────────────────────────────────────────────────────────
@@ -80,47 +193,39 @@ async function pgLoadClases(userId, isAdmin) {
   let res;
   if (isAdmin) {
     res = await pool.query(`
-      SELECT c.data, u.nombre as profe_nombre, u.email as profe_email
+      SELECT c.data, u.nombre AS profe_nombre, u.email AS profe_email
       FROM clases c JOIN usuarios u ON c.usuario_id = u.id
       ORDER BY u.nombre, c.data->>'nombre'
     `);
     return res.rows.map(r => ({ ...r.data, _profe: r.profe_nombre, _profe_email: r.profe_email }));
-  } else {
-    res = await pool.query('SELECT data FROM clases WHERE usuario_id = $1 ORDER BY data->>\'nombre\'', [userId]);
-    return res.rows.map(r => r.data);
   }
+  res = await pool.query(`SELECT data FROM clases WHERE usuario_id = $1 ORDER BY data->>'nombre'`, [userId]);
+  return res.rows.map(r => r.data);
 }
-
 async function pgSaveClase(clase, userId) {
   await pool.query(
-    'INSERT INTO clases (id, usuario_id, data) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET data = $3',
+    `INSERT INTO clases (id, usuario_id, data) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET data=$3`,
     [clase.id, userId, JSON.stringify(clase)]
   );
 }
-
 async function pgGetClase(claseId, userId, isAdmin) {
-  let res;
-  if (isAdmin) {
-    res = await pool.query('SELECT data, usuario_id FROM clases WHERE id = $1', [claseId]);
-  } else {
-    res = await pool.query('SELECT data, usuario_id FROM clases WHERE id = $1 AND usuario_id = $2', [claseId, userId]);
-  }
+  const res = isAdmin
+    ? await pool.query(`SELECT data, usuario_id FROM clases WHERE id=$1`, [claseId])
+    : await pool.query(`SELECT data, usuario_id FROM clases WHERE id=$1 AND usuario_id=$2`, [claseId, userId]);
   if (!res.rows.length) throw new Error('Not found');
   return { clase: res.rows[0].data, ownerId: res.rows[0].usuario_id };
 }
-
 async function pgUpdateClase(claseId, userId, isAdmin, updateFn) {
-  const { clase, ownerId } = await pgGetClase(claseId, userId, isAdmin);
+  const { clase } = await pgGetClase(claseId, userId, isAdmin);
   const updated = updateFn(clase);
-  await pool.query('UPDATE clases SET data = $1 WHERE id = $2', [JSON.stringify(updated), claseId]);
+  await pool.query(`UPDATE clases SET data=$1 WHERE id=$2`, [JSON.stringify(updated), claseId]);
   return updated;
 }
 
-// ── JSON local helpers ──────────────────────────────────────────────────────────
+// ── JSON local ─────────────────────────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 const BACKUP_FILE = path.join(DATA_DIR, 'data.backup.json');
-
 function loadJSON() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
   catch { try { return JSON.parse(fs.readFileSync(BACKUP_FILE, 'utf8')); } catch { return { clases: [] }; } }
@@ -131,269 +236,348 @@ function saveJSON(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-// ── Static files (SPA) ─────────────────────────────────────────────────────────
-// Serve login/register pages without auth
+// ── PARSERS DE PLANILLAS ───────────────────────────────────────────────────────
+function normCol(str) {
+  return String(str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+function mapearFila(fila) {
+  const r = {};
+  for (const [key, val] of Object.entries(fila)) {
+    const k = normCol(key); const v = String(val||'').trim();
+    if (!v) continue;
+    if (k.match(/nombre|name|alumno/)) r.nombre = v;
+    else if (k.match(/email|mail|correo/)) r.email = v;
+    else if (k.match(/dni|documento/)) r.dni = v;
+    else if (k.match(/nota.?1|n1/)) r.nota1 = parseFloat(v)||null;
+    else if (k.match(/nota.?2|n2/)) r.nota2 = parseFloat(v)||null;
+    else if (k.match(/nota.?3|n3/)) r.nota3 = parseFloat(v)||null;
+    else if (k.match(/nota.?4|n4/)) r.nota4 = parseFloat(v)||null;
+    else if (k.match(/nota.?5|n5/)) r.nota5 = parseFloat(v)||null;
+    else if (k.match(/nota.?6|n6/)) r.nota6 = parseFloat(v)||null;
+  }
+  return r;
+}
+function parsearExcel(buffer, filename) {
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws, { defval: '' }).map(mapearFila).filter(r => r.nombre);
+}
+async function parsearDocx(buffer) {
+  const { value } = await mammoth.extractRawText({ buffer });
+  const lines = value.split('\n').map(l => l.trim()).filter(Boolean);
+  const alumnos = [];
+  const firstNorm = normCol(lines[0]||'');
+  if (firstNorm.includes('nombre') || firstNorm.includes('alumno')) {
+    const headers = lines[0].split(/[\t,;|]/).map(h => h.trim());
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(/[\t,;|]/);
+      const fila = {};
+      headers.forEach((h,idx) => { fila[h] = cols[idx]||''; });
+      const m = mapearFila(fila);
+      if (m.nombre) alumnos.push(m);
+    }
+  } else {
+    lines.forEach(line => {
+      const parts = line.split(/[\t,;|]/);
+      if (parts[0] && parts[0].trim().length > 1)
+        alumnos.push({ nombre: parts[0].trim(), email: (parts[1]||'').trim(), dni: (parts[2]||'').trim() });
+    });
+  }
+  return alumnos;
+}
+async function parsearPDF(buffer) {
+  const data = await pdfParse(buffer);
+  const lines = data.text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  const alumnos = [];
+  const firstNorm = normCol(lines[0]||'');
+  const inicio = (firstNorm.includes('nombre') || firstNorm.includes('alumno')) ? 1 : 0;
+  for (let i = inicio; i < lines.length; i++) {
+    const parts = lines[i].split(/[\t,;|]/).map(p => p.trim());
+    if (parts[0] && parts[0].length > 1 && isNaN(parts[0]))
+      alumnos.push({ nombre: parts[0], email: parts[1]||'', dni: parts[2]||'' });
+  }
+  return alumnos;
+}
+
+// ── Static ─────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── AUTH ROUTES ─────────────────────────────────────────────────────────────────
+// ── Health ─────────────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ ok: true, version: '4.0.0' }));
 
-// Register
-app.post('/api/auth/register', async (req, res) => {
-  if (!USE_PG) return res.json({ ok: true, msg: 'Modo local, sin auth' });
+// ── AUTH ───────────────────────────────────────────────────────────────────────
+app.post('/api/auth/register', authLimiter, [
+  body('nombre').trim().isLength({ min:2, max:100 }).withMessage('Nombre debe tener entre 2 y 100 caracteres'),
+  body('email').isEmail().normalizeEmail().withMessage('Email inválido'),
+  body('password').isLength({ min:6, max:100 }).withMessage('La contraseña debe tener al menos 6 caracteres'),
+  body('terminos_aceptados').equals('true').withMessage('Debés aceptar los Términos y Condiciones'),
+], async (req, res) => {
+  if (!USE_PG) return res.json({ ok:true, nombre:'Local', rol:'admin' });
+  if (!validarResultado(req, res)) return;
   const { nombre, email, password } = req.body;
-  if (!nombre || !email || !password) return res.status(400).json({ error: 'Todos los campos son requeridos' });
-  if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   try {
-    const exists = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email.toLowerCase()]);
-    if (exists.rows.length) return res.status(400).json({ error: 'El email ya esta registrado' });
-    const count = await pool.query('SELECT COUNT(*) FROM usuarios');
+    const exists = await pool.query('SELECT id FROM usuarios WHERE email=$1', [email]);
+    if (exists.rows.length) return res.status(400).json({ error: 'El email ya está registrado' });
+    const count   = await pool.query('SELECT COUNT(*) FROM usuarios');
     const isFirst = parseInt(count.rows[0].count) === 0;
-    const hash = await bcrypt.hash(password, 10);
-    const id = Date.now().toString();
-    const rol = isFirst ? 'admin' : 'profe';
-    await pool.query('INSERT INTO usuarios (id, nombre, email, password, rol) VALUES ($1,$2,$3,$4,$5)',
-      [id, nombre.trim(), email.toLowerCase().trim(), hash, rol]);
-    req.session.userId = id;
-    req.session.nombre = nombre.trim();
-    req.session.rol = rol;
-    res.json({ ok: true, nombre: nombre.trim(), rol });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const hash    = await bcrypt.hash(password, 12);
+    const id      = crypto.randomUUID();
+    const rol     = isFirst ? 'admin' : 'profe';
+    const terminosFecha = new Date().toISOString();
+    await pool.query(
+      'INSERT INTO usuarios (id,nombre,email,password,rol,terminos_aceptados,terminos_fecha,terminos_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [id, nombre, email, hash, rol, true, terminosFecha, '1.0']
+    );
+    req.session.userId = id; req.session.nombre = nombre; req.session.rol = rol;
+    res.json({ ok:true, nombre, rol });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Error al registrar' }); }
 });
 
-// Login
-app.post('/api/auth/login', async (req, res) => {
-  if (!USE_PG) return res.json({ ok: true, nombre: 'Local', rol: 'admin' });
+app.post('/api/auth/login', authLimiter, [
+  body('email').isEmail().normalizeEmail().withMessage('Email inválido'),
+  body('password').isLength({ min:1 }).withMessage('Contraseña requerida'),
+], async (req, res) => {
+  if (!USE_PG) return res.json({ ok:true, nombre:'Local', rol:'admin' });
+  if (!validarResultado(req, res)) return;
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
   try {
-    const result = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email.toLowerCase()]);
-    if (!result.rows.length) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
-    const user = result.rows[0];
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
-    req.session.userId = user.id;
-    req.session.nombre = user.nombre;
-    req.session.rol = user.rol;
-    res.json({ ok: true, nombre: user.nombre, rol: user.rol });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const result = await pool.query('SELECT * FROM usuarios WHERE email=$1', [email]);
+    const user   = result.rows[0];
+    const fakeH  = '$2a$12$fakehashfakehashfakehashfakehashfakehashfakeha';
+    const valid  = user ? await bcrypt.compare(password, user.password) : await bcrypt.compare(password, fakeH);
+    if (!user || !valid) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
+    req.session.regenerate(err => {
+      if (err) return res.status(500).json({ error: 'Error de sesión' });
+      req.session.userId = user.id; req.session.nombre = user.nombre; req.session.rol = user.rol;
+      res.json({ ok:true, nombre: user.nombre, rol: user.rol });
+    });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Error al ingresar' }); }
 });
 
-// Logout
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session.destroy(() => { res.clearCookie('mc_sid'); res.json({ ok:true }); });
 });
 
-// Me (check session)
 app.get('/api/auth/me', (req, res) => {
-  if (!USE_PG) return res.json({ ok: true, nombre: 'Local', rol: 'admin', localMode: true });
-  if (!req.session.userId) return res.status(401).json({ error: 'No autenticado' });
-  res.json({ ok: true, nombre: req.session.nombre, rol: req.session.rol });
+  if (!USE_PG) return res.json({ ok:true, nombre:'Local', rol:'admin', localMode:true });
+  if (!req.session || !req.session.userId) return res.status(401).json({ error: 'No autenticado' });
+  res.json({ ok:true, nombre: req.session.nombre, rol: req.session.rol });
 });
 
-// ── ADMIN ROUTES ────────────────────────────────────────────────────────────────
+// ── IMPORTAR PLANILLA ──────────────────────────────────────────────────────────
+app.post('/api/clases/:id/importar-alumnos', requireAuth, uploadLimiter, upload.single('planilla'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  try {
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let alumnos = [];
+    if (['.xlsx','.xls','.csv','.txt'].includes(ext)) alumnos = parsearExcel(req.file.buffer, req.file.originalname);
+    else if (ext === '.docx') alumnos = await parsearDocx(req.file.buffer);
+    else if (ext === '.pdf')  alumnos = await parsearPDF(req.file.buffer);
+    else return res.status(400).json({ error: 'Formato no soportado' });
 
-// Get all users (admin)
+    if (!alumnos.length) return res.status(400).json({ error: 'No se encontraron alumnos. Verificá el formato del archivo.' });
+
+    const alumnosLimitados = alumnos.slice(0, 500);
+
+    if (req.query.preview === '1') {
+      return res.json({ ok:true, preview:true, alumnos: alumnosLimitados, total: alumnosLimitados.length });
+    }
+
+    const nuevos = alumnosLimitados.map(a => ({
+      id: crypto.randomUUID(), asistencias: 0,
+      nombre: sanitizeStr(a.nombre).substring(0, 200),
+      email:  sanitizeStr(a.email  || '').substring(0, 200),
+      dni:    sanitizeStr(a.dni    || '').substring(0, 50),
+      obs: '',
+      nota1: a.nota1??null, nota2: a.nota2??null, nota3: a.nota3??null,
+      nota4: a.nota4??null, nota5: a.nota5??null, nota6: a.nota6??null,
+    }));
+
+    let agregados = 0;
+    if (USE_PG) {
+      await pgUpdateClase(req.params.id, req.session.userId, req.session.rol === 'admin', c => {
+        const ex = new Set(c.alumnos.map(a => a.nombre.toLowerCase()));
+        const n  = nuevos.filter(a => !ex.has(a.nombre.toLowerCase()));
+        c.alumnos.push(...n); agregados = n.length; return c;
+      });
+    } else {
+      const d = loadJSON(); const clase = d.clases.find(c => c.id === req.params.id);
+      if (!clase) return res.status(404).json({ error: 'Clase no encontrada' });
+      const ex = new Set(clase.alumnos.map(a => a.nombre.toLowerCase()));
+      const n  = nuevos.filter(a => !ex.has(a.nombre.toLowerCase()));
+      clase.alumnos.push(...n); agregados = n.length; saveJSON(d);
+    }
+    res.json({ ok:true, agregados, total: nuevos.length });
+  } catch(e) {
+    console.error('Import error:', e.message);
+    res.status(500).json({ error: 'Error procesando el archivo: ' + e.message });
+  }
+});
+
+// ── PLANTILLA MODELO ───────────────────────────────────────────────────────────
+app.get('/api/plantilla-alumnos', requireAuth, (req, res) => {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Nombre','Email','DNI','Nota 1','Nota 2','Nota 3','Nota 4','Nota 5','Nota 6'],
+    ['Juan García','juan@email.com','12345678',8,7,'','','',''],
+    ['María López','maria@email.com','87654321',9,'','','','',''],
+  ]);
+  ws['!cols'] = [{ wch:25 },{ wch:28 },{ wch:12 },...Array(6).fill({ wch:8 })];
+  XLSX.utils.book_append_sheet(wb, ws, 'Alumnos');
+  const buf = XLSX.write(wb, { type:'buffer', bookType:'xlsx' });
+  res.setHeader('Content-Disposition', 'attachment; filename="plantilla-alumnos.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── ADMIN ──────────────────────────────────────────────────────────────────────
 app.get('/api/admin/usuarios', requireAdmin, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT u.id, u.nombre, u.email, u.rol, u.created_at,
-        COUNT(c.id) as total_clases
+    const r = await pool.query(`
+      SELECT u.id, u.nombre, u.email, u.rol, u.created_at, u.terminos_aceptados, u.terminos_fecha, u.terminos_version, COUNT(c.id) AS total_clases
       FROM usuarios u LEFT JOIN clases c ON u.id = c.usuario_id
       GROUP BY u.id ORDER BY u.created_at
     `);
-    res.json(result.rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
-// Change user role (admin)
-app.put('/api/admin/usuarios/:id/rol', requireAdmin, async (req, res) => {
-  try {
-    await pool.query('UPDATE usuarios SET rol = $1 WHERE id = $2', [req.body.rol, req.params.id]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+app.put('/api/admin/usuarios/:id/rol', requireAdmin, [
+  body('rol').isIn(['admin','profe']).withMessage('Rol inválido'),
+], async (req, res) => {
+  if (!validarResultado(req, res)) return;
+  try { await pool.query('UPDATE usuarios SET rol=$1 WHERE id=$2', [req.body.rol, req.params.id]); res.json({ ok:true }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
 });
-
-// Delete user (admin)
 app.delete('/api/admin/usuarios/:id', requireAdmin, async (req, res) => {
-  if (req.params.id === req.session.userId) return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
-  try {
-    await pool.query('DELETE FROM usuarios WHERE id = $1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  if (req.params.id === req.session.userId) return res.status(400).json({ error: 'No podés eliminarte a vos mismo' });
+  try { await pool.query('DELETE FROM usuarios WHERE id=$1', [req.params.id]); res.json({ ok:true }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── DATA ROUTES ─────────────────────────────────────────────────────────────────
-
+// ── DATA ROUTES ────────────────────────────────────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   try {
     if (!USE_PG) return res.json(loadJSON());
-    const isAdmin = req.session.rol === 'admin';
-    const clases = await pgLoadClases(req.session.userId, isAdmin);
+    const clases = await pgLoadClases(req.session.userId, req.session.rol === 'admin');
     res.json({ clases });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/clases', requireAuth, async (req, res) => {
+app.post('/api/clases', requireAuth, [
+  body('nombre').trim().isLength({ min:1, max:200 }).withMessage('Nombre requerido'),
+], async (req, res) => {
+  if (!validarResultado(req, res)) return;
   try {
-    const clase = { id: Date.now().toString(), ...req.body, alumnos: [], sesiones: [] };
-    if (USE_PG) {
-      await pgSaveClase(clase, req.session.userId);
-    } else {
-      const data = loadJSON(); data.clases.push(clase); saveJSON(data);
-    }
+    const clase = { id: crypto.randomUUID(), ...req.body, alumnos:[], sesiones:[] };
+    if (USE_PG) await pgSaveClase(clase, req.session.userId);
+    else { const d = loadJSON(); d.clases.push(clase); saveJSON(d); }
     res.json(clase);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/clases/:id', requireAuth, async (req, res) => {
   try {
-    if (USE_PG) {
-      const updated = await pgUpdateClase(req.params.id, req.session.userId, req.session.rol === 'admin',
-        c => ({ ...c, ...req.body }));
-      res.json(updated);
-    } else {
-      const data = loadJSON();
-      const idx = data.clases.findIndex(c => c.id === req.params.id);
-      if (idx === -1) return res.status(404).json({ error: 'Not found' });
-      data.clases[idx] = { ...data.clases[idx], ...req.body };
-      saveJSON(data); res.json(data.clases[idx]);
+    if (USE_PG) { res.json(await pgUpdateClase(req.params.id, req.session.userId, req.session.rol==='admin', c=>({...c,...req.body}))); }
+    else {
+      const d = loadJSON(); const idx = d.clases.findIndex(c=>c.id===req.params.id);
+      if (idx===-1) return res.status(404).json({ error:'Not found' });
+      d.clases[idx] = {...d.clases[idx],...req.body}; saveJSON(d); res.json(d.clases[idx]);
     }
-  } catch (e) { res.status(404).json({ error: e.message }); }
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.delete('/api/clases/:id', requireAuth, async (req, res) => {
   try {
-    if (USE_PG) {
-      await pgGetClase(req.params.id, req.session.userId, req.session.rol === 'admin');
-      await pool.query('DELETE FROM clases WHERE id = $1', [req.params.id]);
-    } else {
-      const data = loadJSON();
-      data.clases = data.clases.filter(c => c.id !== req.params.id);
-      saveJSON(data);
-    }
-    res.json({ ok: true });
-  } catch (e) { res.status(404).json({ error: e.message }); }
+    if (USE_PG) { await pgGetClase(req.params.id, req.session.userId, req.session.rol==='admin'); await pool.query('DELETE FROM clases WHERE id=$1',[req.params.id]); }
+    else { const d = loadJSON(); d.clases = d.clases.filter(c=>c.id!==req.params.id); saveJSON(d); }
+    res.json({ ok:true });
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
-app.post('/api/clases/:id/alumnos', requireAuth, async (req, res) => {
+app.post('/api/clases/:id/alumnos', requireAuth, [
+  body('nombre').trim().isLength({ min:1, max:200 }).withMessage('Nombre requerido'),
+], async (req, res) => {
+  if (!validarResultado(req, res)) return;
   try {
-    const alumno = { id: Date.now().toString(), asistencias: 0, ...req.body };
-    if (USE_PG) {
-      await pgUpdateClase(req.params.id, req.session.userId, req.session.rol === 'admin',
-        c => { c.alumnos.push(alumno); return c; });
-    } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.id);
-      if (!clase) return res.status(404).json({ error: 'Not found' });
-      clase.alumnos.push(alumno); saveJSON(data);
-    }
+    const alumno = { id: crypto.randomUUID(), asistencias:0, ...req.body };
+    if (USE_PG) await pgUpdateClase(req.params.id, req.session.userId, req.session.rol==='admin', c=>{c.alumnos.push(alumno);return c;});
+    else { const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.id); if(!c) return res.status(404).json({error:'Not found'}); c.alumnos.push(alumno); saveJSON(d); }
     res.json(alumno);
-  } catch (e) { res.status(404).json({ error: e.message }); }
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.put('/api/clases/:cId/alumnos/:aId', requireAuth, async (req, res) => {
   try {
     let updated;
     if (USE_PG) {
-      await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol === 'admin', c => {
-        const idx = c.alumnos.findIndex(a => a.id === req.params.aId);
-        if (idx === -1) throw new Error('Not found');
-        c.alumnos[idx] = { ...c.alumnos[idx], ...req.body }; updated = c.alumnos[idx]; return c;
+      await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol==='admin', c=>{
+        const idx = c.alumnos.findIndex(a=>a.id===req.params.aId);
+        if(idx===-1) throw new Error('Not found');
+        c.alumnos[idx]={...c.alumnos[idx],...req.body}; updated=c.alumnos[idx]; return c;
       });
     } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.cId);
-      const idx = clase && clase.alumnos.findIndex(a => a.id === req.params.aId);
-      if (!clase || idx === -1) return res.status(404).json({ error: 'Not found' });
-      clase.alumnos[idx] = { ...clase.alumnos[idx], ...req.body }; updated = clase.alumnos[idx]; saveJSON(data);
+      const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.cId);
+      const idx=c&&c.alumnos.findIndex(a=>a.id===req.params.aId);
+      if(!c||idx===-1) return res.status(404).json({error:'Not found'});
+      c.alumnos[idx]={...c.alumnos[idx],...req.body}; updated=c.alumnos[idx]; saveJSON(d);
     }
     res.json(updated);
-  } catch (e) { res.status(404).json({ error: e.message }); }
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.delete('/api/clases/:cId/alumnos/:aId', requireAuth, async (req, res) => {
   try {
-    if (USE_PG) {
-      await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol === 'admin',
-        c => { c.alumnos = c.alumnos.filter(a => a.id !== req.params.aId); return c; });
-    } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.cId);
-      if (!clase) return res.status(404).json({ error: 'Not found' });
-      clase.alumnos = clase.alumnos.filter(a => a.id !== req.params.aId); saveJSON(data);
-    }
-    res.json({ ok: true });
-  } catch (e) { res.status(404).json({ error: e.message }); }
+    if (USE_PG) await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol==='admin', c=>{c.alumnos=c.alumnos.filter(a=>a.id!==req.params.aId);return c;});
+    else { const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.cId); if(!c) return res.status(404).json({error:'Not found'}); c.alumnos=c.alumnos.filter(a=>a.id!==req.params.aId); saveJSON(d); }
+    res.json({ ok:true });
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.post('/api/clases/:id/sesiones', requireAuth, async (req, res) => {
   try {
-    const sesion = { id: Date.now().toString(), fecha: new Date().toISOString().split('T')[0], ...req.body };
-    if (USE_PG) {
-      await pgUpdateClase(req.params.id, req.session.userId, req.session.rol === 'admin',
-        c => { c.sesiones.push(sesion); return c; });
-    } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.id);
-      if (!clase) return res.status(404).json({ error: 'Not found' });
-      clase.sesiones.push(sesion); saveJSON(data);
-    }
+    const sesion = { id: crypto.randomUUID(), fecha: new Date().toISOString().split('T')[0], ...req.body };
+    if (USE_PG) await pgUpdateClase(req.params.id, req.session.userId, req.session.rol==='admin', c=>{c.sesiones.push(sesion);return c;});
+    else { const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.id); if(!c) return res.status(404).json({error:'Not found'}); c.sesiones.push(sesion); saveJSON(d); }
     res.json(sesion);
-  } catch (e) { res.status(404).json({ error: e.message }); }
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.delete('/api/clases/:cId/sesiones/:sId', requireAuth, async (req, res) => {
   try {
-    if (USE_PG) {
-      await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol === 'admin',
-        c => { c.sesiones = c.sesiones.filter(s => s.id !== req.params.sId); return c; });
-    } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.cId);
-      if (!clase) return res.status(404).json({ error: 'Not found' });
-      clase.sesiones = clase.sesiones.filter(s => s.id !== req.params.sId); saveJSON(data);
-    }
-    res.json({ ok: true });
-  } catch (e) { res.status(404).json({ error: e.message }); }
+    if (USE_PG) await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol==='admin', c=>{c.sesiones=c.sesiones.filter(s=>s.id!==req.params.sId);return c;});
+    else { const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.cId); if(!c) return res.status(404).json({error:'Not found'}); c.sesiones=c.sesiones.filter(s=>s.id!==req.params.sId); saveJSON(d); }
+    res.json({ ok:true });
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
 app.post('/api/clases/:cId/sesiones/:sId/asistencia', requireAuth, async (req, res) => {
   try {
-    if (USE_PG) {
-      await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol === 'admin', c => {
-        const ses = c.sesiones.find(s => s.id === req.params.sId);
-        if (!ses) throw new Error('Not found');
-        ses.asistencia = req.body.asistencia;
-        c.alumnos.forEach(a => {
-          let cnt = 0;
-          c.sesiones.forEach(s => { if (s.asistencia && s.asistencia[a.id] === true) cnt++; });
-          a.asistencias = cnt;
-        });
-        return c;
-      });
-    } else {
-      const data = loadJSON();
-      const clase = data.clases.find(c => c.id === req.params.cId);
-      const ses = clase && clase.sesiones.find(s => s.id === req.params.sId);
-      if (!ses) return res.status(404).json({ error: 'Not found' });
+    const updater = c => {
+      const ses = c.sesiones.find(s=>s.id===req.params.sId);
+      if (!ses) throw new Error('Not found');
       ses.asistencia = req.body.asistencia;
-      clase.alumnos.forEach(a => {
-        let cnt = 0;
-        clase.sesiones.forEach(s => { if (s.asistencia && s.asistencia[a.id] === true) cnt++; });
-        a.asistencias = cnt;
-      });
-      saveJSON(data);
-    }
-    res.json({ ok: true });
-  } catch (e) { res.status(404).json({ error: e.message }); }
+      c.alumnos.forEach(a => { let cnt=0; c.sesiones.forEach(s=>{if(s.asistencia&&s.asistencia[a.id]===true)cnt++;}); a.asistencias=cnt; });
+      return c;
+    };
+    if (USE_PG) await pgUpdateClase(req.params.cId, req.session.userId, req.session.rol==='admin', updater);
+    else { const d=loadJSON(); const c=d.clases.find(c=>c.id===req.params.cId); if(!c) return res.status(404).json({error:'Not found'}); updater(c); saveJSON(d); }
+    res.json({ ok:true });
+  } catch(e) { res.status(404).json({ error: e.message }); }
 });
 
-// ── Start ───────────────────────────────────────────────────────────────────────
+// ── Error handler ──────────────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'El archivo supera los 5MB' });
+  console.error('Error:', err.message);
+  res.status(500).json({ error: 'Error interno del servidor' });
+});
+
+// ── Start ──────────────────────────────────────────────────────────────────────
 initDB().then(() => {
   app.listen(PORT, () => {
     console.log('\n=====================================');
-    console.log('  MisClases v3 en puerto ' + PORT);
+    console.log('  MisClases v4 en puerto ' + PORT);
     if (!USE_PG) console.log('  Abre: http://localhost:' + PORT);
     console.log('=====================================\n');
   });
-}).catch(err => { console.error('Error:', err); process.exit(1); });
+}).catch(err => { console.error('Error init:', err); process.exit(1); });
