@@ -294,67 +294,38 @@ async function parsearPDF(buffer) {
   const data = await pdfParse(buffer);
   const rawLines = data.text.split('\n').map(l => l.trim());
 
-  // ── Estrategia 1: Acta institucional argentina (SIMA/CUE) ─────────────────
-  // El PDF tiene columnas separadas en líneas distintas:
-  //   línea A: " 1 "
-  //   línea B: "  -  37887853"
-  //   línea C: "ALCALDE SAMUEL JOSE"
-  // Buscamos el patrón DNI (línea con "- XXXXXXXX") y tomamos la siguiente línea no vacía como nombre
-  const PATRON_DNI = /^-\s*(\d{6,9})\s*$/;
-  const IGNORAR_NOMBRE = /^(total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|prom|condicion|col|rec|libreta|as\.|nota|parcial|regular|libre|promocional|n°|\d+)$/i;
+  // ── Palabras/líneas a ignorar siempre ─────────────────────────────────────
+  const IGNORAR = /^(total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue|cod|pag|pagina|prom|parc|condicion|col|rec|libreta|nota|parcial|regular|libre|promocional|as|sin|n°|division|alumno|nombre|dni|email|correo|promedio|asistencia|\d+|[-–.]+|s\/c|ninguno)$/i;
 
+  // ── Estrategia 1: Acta institucional (DNI en línea propia, nombre en siguiente) ──
+  // Patrón: línea que sea solo "-  12345678"
+  const PATRON_DNI_SOLO = /^-\s*(\d{6,9})\s*$/;
   const actaAlumnos = [];
   for (let i = 0; i < rawLines.length; i++) {
-    const m = rawLines[i].match(PATRON_DNI);
-    if (m) {
-      const dni = m[1];
-      // Buscar la siguiente línea que sea un nombre válido
-      for (let j = i + 1; j < Math.min(i + 4, rawLines.length); j++) {
-        const candidato = rawLines[j].trim();
-        if (!candidato || IGNORAR_NOMBRE.test(candidato)) continue;
-        // Nombre válido: solo letras, espacios y caracteres especiales, mín 2 palabras
-        if (/^[A-ZÁÉÍÓÚÜÑ\s]{4,}$/i.test(candidato) && candidato.split(/\s+/).filter(Boolean).length >= 2) {
-          actaAlumnos.push({ nombre: toTitleCase(candidato), dni, email: '' });
-          break;
-        }
+    if (!PATRON_DNI_SOLO.test(rawLines[i])) continue;
+    // Buscar nombre en las siguientes líneas (máx 3)
+    for (let j = i + 1; j < Math.min(i + 4, rawLines.length); j++) {
+      const linea = rawLines[j];
+      if (!linea || IGNORAR.test(linea)) continue;
+      // Solo letras, tildes, espacios — mínimo 2 palabras — sin números
+      if (/^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}$/i.test(linea) && linea.split(/\s+/).filter(Boolean).length >= 2) {
+        actaAlumnos.push({ nombre: toTitleCase(linea) });
+        break;
       }
     }
   }
-  if (actaAlumnos.length > 0) return actaAlumnos;
+  if (actaAlumnos.length >= 2) return actaAlumnos;
 
-  // ── Estrategia 2: Todo en una línea "N - DNI NOMBRE notas" ────────────────
-  const lines = rawLines.filter(l => l.length > 1);
-  const PATRON_LINEA = /^\d+\s*[-–]\s*(\d{6,9})\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}?)(?:\s+[\d\-–])/i;
-  const lineaAlumnos = [];
-  for (const line of lines) {
-    const m = line.match(PATRON_LINEA);
-    if (m && m[2].split(/\s+/).length >= 2) {
-      lineaAlumnos.push({ nombre: toTitleCase(m[2].trim()), dni: m[1], email: '' });
-    }
-  }
-  if (lineaAlumnos.length > 0) return lineaAlumnos;
-
-  // ── Estrategia 3: PDF con encabezados (Nombre, Email, DNI) ────────────────
-  const firstNorm = normCol(lines[0]||'');
-  if (firstNorm.includes('nombre') || firstNorm.includes('alumno')) {
-    const alumnos = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(/[\t,;|]/).map(p => p.trim());
-      if (parts[0] && parts[0].length > 2 && isNaN(parts[0]))
-        alumnos.push({ nombre: toTitleCase(parts[0]), email: parts[1]||'', dni: parts[2]||'' });
-    }
-    if (alumnos.length > 0) return alumnos;
-  }
-
-  // ── Estrategia 4: Lista simple, un alumno por línea ───────────────────────
-  const IGNORAR_LINEA = /total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|page|prom|condicion|\d{4}$/i;
+  // ── Estrategia 2: Lista simple — una línea = un nombre ────────────────────
+  const lines = rawLines.filter(l => l.length > 2);
   const simpleAlumnos = [];
-  for (const line of lines) {
-    if (IGNORAR_LINEA.test(line)) continue;
-    const parts = line.split(/[\t,;|]/).map(p => p.trim());
-    const nombre = parts[0];
-    if (nombre && nombre.length > 3 && isNaN(nombre) && nombre.split(/\s+/).length >= 2)
-      simpleAlumnos.push({ nombre: toTitleCase(nombre), email: parts[1]||'', dni: parts[2]||'' });
+  for (const linea of lines) {
+    if (IGNORAR.test(linea)) continue;
+    if (/\d/.test(linea)) continue;              // descarta líneas con números
+    if (!/^[A-ZÁÉÍÓÚÜÑ]/i.test(linea)) continue; // debe empezar con letra
+    const palabras = linea.split(/\s+/).filter(Boolean);
+    if (palabras.length < 2 || palabras.length > 6) continue; // entre 2 y 6 palabras
+    simpleAlumnos.push({ nombre: toTitleCase(linea) });
   }
   return simpleAlumnos;
 }
