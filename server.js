@@ -292,47 +292,71 @@ async function parsearDocx(buffer) {
 }
 async function parsearPDF(buffer) {
   const data = await pdfParse(buffer);
-  const lines = data.text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  const rawLines = data.text.split('\n').map(l => l.trim());
 
-  // ── Estrategia 1: Acta institucional argentina ─────────────────────────────
-  // Formato: " 1 - 37887853 ALCALDE SAMUEL JOSE 7 80 - - PROMOCIONAL"
-  const PATRON_ACTA = /^\d+\s*[-–]\s*(\d{6,9})\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}?)(?:\s+[\d\-–][\d\s\-–])/i;
+  // ── Estrategia 1: Acta institucional argentina (SIMA/CUE) ─────────────────
+  // El PDF tiene columnas separadas en líneas distintas:
+  //   línea A: " 1 "
+  //   línea B: "  -  37887853"
+  //   línea C: "ALCALDE SAMUEL JOSE"
+  // Buscamos el patrón DNI (línea con "- XXXXXXXX") y tomamos la siguiente línea no vacía como nombre
+  const PATRON_DNI = /^-\s*(\d{6,9})\s*$/;
+  const IGNORAR_NOMBRE = /^(total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|prom|condicion|col|rec|libreta|as\.|nota|parcial|regular|libre|promocional|n°|\d+)$/i;
+
   const actaAlumnos = [];
-  for (const line of lines) {
-    const m = line.match(PATRON_ACTA);
+  for (let i = 0; i < rawLines.length; i++) {
+    const m = rawLines[i].match(PATRON_DNI);
     if (m) {
-      const dni    = m[1].trim();
-      const nombre = toTitleCase(m[2].trim());
-      if (nombre.split(' ').length >= 2) { // al menos nombre y apellido
-        actaAlumnos.push({ nombre, dni, email: '' });
+      const dni = m[1];
+      // Buscar la siguiente línea que sea un nombre válido
+      for (let j = i + 1; j < Math.min(i + 4, rawLines.length); j++) {
+        const candidato = rawLines[j].trim();
+        if (!candidato || IGNORAR_NOMBRE.test(candidato)) continue;
+        // Nombre válido: solo letras, espacios y caracteres especiales, mín 2 palabras
+        if (/^[A-ZÁÉÍÓÚÜÑ\s]{4,}$/i.test(candidato) && candidato.split(/\s+/).filter(Boolean).length >= 2) {
+          actaAlumnos.push({ nombre: toTitleCase(candidato), dni, email: '' });
+          break;
+        }
       }
     }
   }
   if (actaAlumnos.length > 0) return actaAlumnos;
 
-  // ── Estrategia 2: PDF con encabezados (Nombre, Email, DNI) ─────────────────
+  // ── Estrategia 2: Todo en una línea "N - DNI NOMBRE notas" ────────────────
+  const lines = rawLines.filter(l => l.length > 1);
+  const PATRON_LINEA = /^\d+\s*[-–]\s*(\d{6,9})\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}?)(?:\s+[\d\-–])/i;
+  const lineaAlumnos = [];
+  for (const line of lines) {
+    const m = line.match(PATRON_LINEA);
+    if (m && m[2].split(/\s+/).length >= 2) {
+      lineaAlumnos.push({ nombre: toTitleCase(m[2].trim()), dni: m[1], email: '' });
+    }
+  }
+  if (lineaAlumnos.length > 0) return lineaAlumnos;
+
+  // ── Estrategia 3: PDF con encabezados (Nombre, Email, DNI) ────────────────
   const firstNorm = normCol(lines[0]||'');
   if (firstNorm.includes('nombre') || firstNorm.includes('alumno')) {
     const alumnos = [];
     for (let i = 1; i < lines.length; i++) {
       const parts = lines[i].split(/[\t,;|]/).map(p => p.trim());
       if (parts[0] && parts[0].length > 2 && isNaN(parts[0]))
-        alumnos.push({ nombre: parts[0], email: parts[1]||'', dni: parts[2]||'' });
+        alumnos.push({ nombre: toTitleCase(parts[0]), email: parts[1]||'', dni: parts[2]||'' });
     }
     if (alumnos.length > 0) return alumnos;
   }
 
-  // ── Estrategia 3: Una línea = un alumno (lista simple) ─────────────────────
-  const IGNORAR = /total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|page|\d{4}$/i;
-  const alumnos = [];
+  // ── Estrategia 4: Lista simple, un alumno por línea ───────────────────────
+  const IGNORAR_LINEA = /total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue:|cod\.|página|page|prom|condicion|\d{4}$/i;
+  const simpleAlumnos = [];
   for (const line of lines) {
-    if (IGNORAR.test(line)) continue;
+    if (IGNORAR_LINEA.test(line)) continue;
     const parts = line.split(/[\t,;|]/).map(p => p.trim());
     const nombre = parts[0];
-    if (nombre && nombre.length > 3 && isNaN(nombre) && nombre.split(' ').length >= 2)
-      alumnos.push({ nombre: toTitleCase(nombre), email: parts[1]||'', dni: parts[2]||'' });
+    if (nombre && nombre.length > 3 && isNaN(nombre) && nombre.split(/\s+/).length >= 2)
+      simpleAlumnos.push({ nombre: toTitleCase(nombre), email: parts[1]||'', dni: parts[2]||'' });
   }
-  return alumnos;
+  return simpleAlumnos;
 }
 
 
