@@ -433,7 +433,7 @@ app.use((err, req, res, next) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 initDB().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log('\n=====================================');
     console.log('  MisClases v4 en puerto ' + PORT);
     if (!USE_PG) console.log('  Abre: http://localhost:' + PORT);
