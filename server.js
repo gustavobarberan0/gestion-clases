@@ -13,10 +13,6 @@ const session      = require('express-session');
 const ConnectPg    = require('connect-pg-simple');
 const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
-const multer       = require('multer');
-const XLSX         = require('xlsx');
-const mammoth      = require('mammoth');
-const pdfParse     = require('pdf-parse');
 const { body, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
 const fs           = require('fs');
@@ -89,12 +85,6 @@ const authLimiter = rateLimit({
   message: { error: 'Demasiados intentos, intentá en 15 minutos' },
 });
 
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: { error: 'Demasiadas subidas, esperá un momento' },
-});
-
 app.use(globalLimiter);
 
 // ── Sesiones ───────────────────────────────────────────────────────────────────
@@ -126,17 +116,6 @@ app.use(cookieParser());
 app.use(express.json({ limit: '2mb' }));
 app.use(session(sessionConfig));
 
-// ── Multer — upload en memoria ─────────────────────────────────────────────────
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const allowedExts = ['.xlsx', '.xls', '.csv', '.docx', '.pdf', '.txt'];
-    if (allowedExts.includes(ext)) cb(null, true);
-    else cb(new Error('Formato no soportado. Usá .xlsx, .csv, .docx o .pdf'));
-  },
-});
 
 // ── Init tablas ────────────────────────────────────────────────────────────────
 async function initDB() {
@@ -237,98 +216,12 @@ function saveJSON(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-// ── PARSERS DE PLANILLAS ───────────────────────────────────────────────────────
-function toTitleCase(str) {
-  if (!str) return '';
-  return str.toLowerCase().replace(/(?:^|\s)\S/g, l => l.toUpperCase());
-}
-function normCol(str) {
-  return String(str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
-}
-function mapearFila(fila) {
-  const r = {};
-  for (const [key, val] of Object.entries(fila)) {
-    const k = normCol(key); const v = String(val||'').trim();
-    if (!v) continue;
-    if (k.match(/nombre|name|alumno/)) r.nombre = v;
-    else if (k.match(/email|mail|correo/)) r.email = v;
-    else if (k.match(/dni|documento/)) r.dni = v;
-    else if (k.match(/nota.?1|n1/)) r.nota1 = parseFloat(v)||null;
-    else if (k.match(/nota.?2|n2/)) r.nota2 = parseFloat(v)||null;
-    else if (k.match(/nota.?3|n3/)) r.nota3 = parseFloat(v)||null;
-    else if (k.match(/nota.?4|n4/)) r.nota4 = parseFloat(v)||null;
-    else if (k.match(/nota.?5|n5/)) r.nota5 = parseFloat(v)||null;
-    else if (k.match(/nota.?6|n6/)) r.nota6 = parseFloat(v)||null;
-  }
-  return r;
-}
-function parsearExcel(buffer, filename) {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: '' }).map(mapearFila).filter(r => r.nombre).map(r => ({ ...r, nombre: toTitleCase(r.nombre) }));
-}
-async function parsearDocx(buffer) {
-  const { value } = await mammoth.extractRawText({ buffer });
-  const lines = value.split('\n').map(l => l.trim()).filter(Boolean);
-  const alumnos = [];
-  const firstNorm = normCol(lines[0]||'');
-  if (firstNorm.includes('nombre') || firstNorm.includes('alumno')) {
-    const headers = lines[0].split(/[\t,;|]/).map(h => h.trim());
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(/[\t,;|]/);
-      const fila = {};
-      headers.forEach((h,idx) => { fila[h] = cols[idx]||''; });
-      const m = mapearFila(fila);
-      if (m.nombre) alumnos.push(m);
-    }
-  } else {
-    lines.forEach(line => {
-      const parts = line.split(/[\t,;|]/);
-      if (parts[0] && parts[0].trim().length > 1)
-        alumnos.push({ nombre: parts[0].trim(), email: (parts[1]||'').trim(), dni: (parts[2]||'').trim() });
-    });
-  }
-  return alumnos;
-}
-async function parsearPDF(buffer) {
-  const data = await pdfParse(buffer);
-  const rawLines = data.text.split('\n').map(l => l.trim());
 
-  // ── Palabras/líneas a ignorar siempre ─────────────────────────────────────
-  const IGNORAR = /^(total|acta|examen|materia|carrera|curso|division|fecha|turno|folio|libro|aprobado|desaprobado|ausente|presidente|instituto|cue|cod|pag|pagina|prom|parc|condicion|col|rec|libreta|nota|parcial|regular|libre|promocional|as|sin|n°|division|alumno|nombre|dni|email|correo|promedio|asistencia|\d+|[-–.]+|s\/c|ninguno)$/i;
 
-  // ── Estrategia 1: Acta institucional (DNI en línea propia, nombre en siguiente) ──
-  // Patrón: línea que sea solo "-  12345678"
-  const PATRON_DNI_SOLO = /^-\s*(\d{6,9})\s*$/;
-  const actaAlumnos = [];
-  for (let i = 0; i < rawLines.length; i++) {
-    if (!PATRON_DNI_SOLO.test(rawLines[i])) continue;
-    // Buscar nombre en las siguientes líneas (máx 3)
-    for (let j = i + 1; j < Math.min(i + 4, rawLines.length); j++) {
-      const linea = rawLines[j];
-      if (!linea || IGNORAR.test(linea)) continue;
-      // Solo letras, tildes, espacios — mínimo 2 palabras — sin números
-      if (/^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]{3,}$/i.test(linea) && linea.split(/\s+/).filter(Boolean).length >= 2) {
-        actaAlumnos.push({ nombre: toTitleCase(linea) });
-        break;
-      }
-    }
-  }
-  if (actaAlumnos.length >= 2) return actaAlumnos;
 
-  // ── Estrategia 2: Lista simple — una línea = un nombre ────────────────────
-  const lines = rawLines.filter(l => l.length > 2);
-  const simpleAlumnos = [];
-  for (const linea of lines) {
-    if (IGNORAR.test(linea)) continue;
-    if (/\d/.test(linea)) continue;              // descarta líneas con números
-    if (!/^[A-ZÁÉÍÓÚÜÑ]/i.test(linea)) continue; // debe empezar con letra
-    const palabras = linea.split(/\s+/).filter(Boolean);
-    if (palabras.length < 2 || palabras.length > 6) continue; // entre 2 y 6 palabras
-    simpleAlumnos.push({ nombre: toTitleCase(linea) });
-  }
-  return simpleAlumnos;
-}
+
+
+
 
 
 // ── Static ─────────────────────────────────────────────────────────────────────
@@ -396,9 +289,6 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ ok:true, nombre: req.session.nombre, rol: req.session.rol });
 });
 
-// ── IMPORTAR PLANILLA ──────────────────────────────────────────────────────────
-app.post('/api/clases/:id/importar-alumnos', requireAuth, uploadLimiter, upload.single('planilla'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
   try {
     const ext = path.extname(req.file.originalname).toLowerCase();
     let alumnos = [];
@@ -446,21 +336,6 @@ app.post('/api/clases/:id/importar-alumnos', requireAuth, uploadLimiter, upload.
   }
 });
 
-// ── PLANTILLA MODELO ───────────────────────────────────────────────────────────
-app.get('/api/plantilla-alumnos', requireAuth, (req, res) => {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    ['Nombre','Email','DNI','Nota 1','Nota 2','Nota 3','Nota 4','Nota 5','Nota 6'],
-    ['Juan García','juan@email.com','12345678',8,7,'','','',''],
-    ['María López','maria@email.com','87654321',9,'','','','',''],
-  ]);
-  ws['!cols'] = [{ wch:25 },{ wch:28 },{ wch:12 },...Array(6).fill({ wch:8 })];
-  XLSX.utils.book_append_sheet(wb, ws, 'Alumnos');
-  const buf = XLSX.write(wb, { type:'buffer', bookType:'xlsx' });
-  res.setHeader('Content-Disposition', 'attachment; filename="plantilla-alumnos.xlsx"');
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(buf);
-});
 
 // ── ADMIN ──────────────────────────────────────────────────────────────────────
 app.get('/api/admin/usuarios', requireAdmin, async (req, res) => {
