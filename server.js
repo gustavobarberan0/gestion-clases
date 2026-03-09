@@ -289,54 +289,6 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ ok:true, nombre: req.session.nombre, rol: req.session.rol });
 });
 
-  try {
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    let alumnos = [];
-    if (['.xlsx','.xls','.csv','.txt'].includes(ext)) alumnos = parsearExcel(req.file.buffer, req.file.originalname);
-    else if (ext === '.docx') alumnos = await parsearDocx(req.file.buffer);
-    else if (ext === '.pdf')  alumnos = await parsearPDF(req.file.buffer);
-    else return res.status(400).json({ error: 'Formato no soportado' });
-
-    if (!alumnos.length) return res.status(400).json({ error: 'No se encontraron alumnos. Verificá el formato del archivo.' });
-
-    const alumnosLimitados = alumnos.slice(0, 500);
-
-    if (req.query.preview === '1') {
-      return res.json({ ok:true, preview:true, alumnos: alumnosLimitados, total: alumnosLimitados.length });
-    }
-
-    const nuevos = alumnosLimitados.map(a => ({
-      id: crypto.randomUUID(), asistencias: 0,
-      nombre: sanitizeStr(a.nombre).substring(0, 200),
-      email:  sanitizeStr(a.email  || '').substring(0, 200),
-      dni:    sanitizeStr(a.dni    || '').substring(0, 50),
-      obs: '',
-      nota1: a.nota1??null, nota2: a.nota2??null, nota3: a.nota3??null,
-      nota4: a.nota4??null, nota5: a.nota5??null, nota6: a.nota6??null,
-    }));
-
-    let agregados = 0;
-    if (USE_PG) {
-      await pgUpdateClase(req.params.id, req.session.userId, req.session.rol === 'admin', c => {
-        const ex = new Set(c.alumnos.map(a => a.nombre.toLowerCase()));
-        const n  = nuevos.filter(a => !ex.has(a.nombre.toLowerCase()));
-        c.alumnos.push(...n); agregados = n.length; return c;
-      });
-    } else {
-      const d = loadJSON(); const clase = d.clases.find(c => c.id === req.params.id);
-      if (!clase) return res.status(404).json({ error: 'Clase no encontrada' });
-      const ex = new Set(clase.alumnos.map(a => a.nombre.toLowerCase()));
-      const n  = nuevos.filter(a => !ex.has(a.nombre.toLowerCase()));
-      clase.alumnos.push(...n); agregados = n.length; saveJSON(d);
-    }
-    res.json({ ok:true, agregados, total: nuevos.length });
-  } catch(e) {
-    console.error('Import error:', e.message);
-    res.status(500).json({ error: 'Error procesando el archivo: ' + e.message });
-  }
-});
-
-
 // ── ADMIN ──────────────────────────────────────────────────────────────────────
 app.get('/api/admin/usuarios', requireAdmin, async (req, res) => {
   try {
