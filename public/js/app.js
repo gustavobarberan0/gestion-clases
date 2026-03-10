@@ -34,6 +34,62 @@ function renderUserBar() {
     '</div>';
 }
 
+function togglePassMC(id, btn) {
+  const input = document.getElementById(id);
+  const isText = input.type === 'text';
+  input.type = isText ? 'password' : 'text';
+  btn.querySelector('svg').innerHTML = isText
+    ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+}
+
+function openModalCambiarPass() {
+  ['mpActual','mpNueva','mpConfirm'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('miPassError').style.display = 'none';
+  document.getElementById('modalMiPass').classList.add('active');
+}
+
+async function cambiarMiPass() {
+  const actual  = document.getElementById('mpActual').value;
+  const nueva   = document.getElementById('mpNueva').value;
+  const confirm = document.getElementById('mpConfirm').value;
+  const errEl   = document.getElementById('miPassError');
+  errEl.style.display = 'none';
+  if (!actual || !nueva) { errEl.textContent = 'Completá todos los campos'; errEl.style.display = 'block'; return; }
+  if (nueva.length < 6)  { errEl.textContent = 'Mínimo 6 caracteres'; errEl.style.display = 'block'; return; }
+  if (nueva !== confirm) { errEl.textContent = 'Las contraseñas no coinciden'; errEl.style.display = 'block'; return; }
+  try {
+    const r = await fetch('/api/auth/password', { method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ actual, nueva }) });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+    closeModal('modalMiPass');
+    showToast('Contraseña actualizada', 'success');
+  } catch { errEl.textContent = 'Error de conexión'; errEl.style.display = 'block'; }
+}
+
+let resetUserId = null;
+function abrirResetPass(id, nombre) {
+  resetUserId = id;
+  document.getElementById('resetUserNombre').textContent = nombre;
+  document.getElementById('resetPassNueva').value = '';
+  document.getElementById('resetPassError').style.display = 'none';
+  document.getElementById('modalResetPass').classList.add('active');
+}
+
+async function confirmarResetPass() {
+  const nueva = document.getElementById('resetPassNueva').value;
+  const errEl = document.getElementById('resetPassError');
+  errEl.style.display = 'none';
+  if (!nueva || nueva.length < 6) { errEl.textContent = 'Mínimo 6 caracteres'; errEl.style.display = 'block'; return; }
+  try {
+    const r = await fetch(`/api/admin/usuarios/${resetUserId}/password`, { method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: nueva }) });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+    closeModal('modalResetPass');
+    showToast('Contraseña reseteada', 'success');
+  } catch { errEl.textContent = 'Error de conexión'; errEl.style.display = 'block'; }
+}
+
 async function doLogout() {
   await fetch('/api/auth/logout', { method: 'POST' });
   window.location.href = '/login.html';
@@ -61,6 +117,7 @@ async function renderAdminPanel() {
         (!isMe ? (
           '<button class="btn-icon" title="' + (u.rol === 'admin' ? 'Quitar admin' : 'Hacer admin') + '" onclick="toggleRol(\'' + u.id + '\',\'' + u.rol + '\')">' +
           (u.rol === 'admin' ? '↓' : '↑') + '</button> ' +
+          '<button class="btn-icon" title="Resetear contraseña" onclick="abrirResetPass(\'' + u.id + '\',\'' + u.nombre + '\')">&#128273;</button> ' +
           '<button class="btn-icon" title="Eliminar" onclick="confirmDeleteUser(\'' + u.id + '\',\'' + u.nombre + '\')">&#10005;</button>'
         ) : '') +
         '</td></tr>';
@@ -78,6 +135,7 @@ async function renderAdminPanel() {
         (!isMe ? '<div class="admin-card-actions">' +
           '<button class="btn-secondary btn-sm" style="flex:1" onclick="toggleRol(\'' + u.id + '\',\'' + u.rol + '\')">' +
           (u.rol === 'admin' ? '↓ Quitar admin' : '↑ Hacer admin') + '</button>' +
+          '<button class="btn-secondary btn-sm" onclick="abrirResetPass(\'' + u.id + '\',\'' + u.nombre + '\')">&#128273; Contraseña</button>' +
           '<button class="btn-danger btn-sm" onclick="confirmDeleteUser(\'' + u.id + '\',\'' + u.nombre + '\')">&#10005; Eliminar</button>' +
           '</div>' : '') +
         '</div>';

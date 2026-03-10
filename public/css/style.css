@@ -393,3 +393,23 @@ h1,h2,h3,h4 { font-family: 'Syne', sans-serif; }
   transition: all .2s; margin-top: .5rem;
 }
 .plantilla-link:hover { background: rgba(124,111,255,.1); }
+
+/* ── Password fields ── */
+.pass-wrap-mc { position: relative; }
+.pass-wrap-mc input { padding-right: 2.6rem !important; }
+.pass-toggle-mc {
+  position: absolute; right: .6rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: var(--text2);
+  padding: .2rem; display: flex; align-items: center; transition: color .16s;
+}
+.pass-toggle-mc:hover { color: var(--text); }
+
+/* ── Cambiar contraseña link en sidebar ── */
+.btn-change-pass-mc {
+  display: block; width: calc(100% - 2rem); margin: .2rem 1rem .4rem;
+  background: none; border: none; color: var(--text2);
+  font-size: .75rem; cursor: pointer; padding: .35rem .5rem;
+  font-family: 'DM Sans', sans-serif; text-align: left;
+  border-radius: 8px; transition: all .18s;
+}
+.btn-change-pass-mc:hover { color: var(--accent); background: rgba(124,111,255,.08); }

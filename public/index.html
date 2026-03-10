@@ -31,6 +31,7 @@
       <div class="sidebar-section-title" style="padding:.3rem 1rem .2rem">CLASES</div>
       <div class="sidebar-clases" id="sidebarClases"></div>
       <div class="sidebar-user" id="sidebarUser"></div>
+      <button class="btn-change-pass-mc" onclick="openModalCambiarPass()" title="Cambiar contraseña">🔑 Cambiar contraseña</button>
     <button class="btn-logout-full" onclick="doLogout()">&#10148; Cerrar sesión</button>
     <div class="sidebar-footer">
         <button class="btn-nueva-clase" onclick="openModalClase()">+ Nueva Clase</button>
@@ -291,6 +292,70 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <!-- MODAL CAMBIAR MI CONTRASEÑA -->
+  <div class="modal-overlay" id="modalMiPass">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Cambiar mi contraseña</h3>
+        <button onclick="closeModal('modalMiPass')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="error" id="miPassError" style="display:none;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:#FF6B6B;padding:.6rem .8rem;border-radius:8px;font-size:.82rem;margin-bottom:.8rem"></div>
+        <div class="form-group">
+          <label>Contraseña actual</label>
+          <div class="pass-wrap-mc">
+            <input type="password" id="mpActual" placeholder="Tu contraseña actual">
+            <button type="button" class="pass-toggle-mc" onclick="togglePassMC('mpActual',this)" tabindex="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Nueva contraseña</label>
+          <div class="pass-wrap-mc">
+            <input type="password" id="mpNueva" placeholder="Mínimo 6 caracteres">
+            <button type="button" class="pass-toggle-mc" onclick="togglePassMC('mpNueva',this)" tabindex="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Confirmar nueva contraseña</label>
+          <div class="pass-wrap-mc">
+            <input type="password" id="mpConfirm" placeholder="Repetí la nueva contraseña">
+            <button type="button" class="pass-toggle-mc" onclick="togglePassMC('mpConfirm',this)" tabindex="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalMiPass')">Cancelar</button>
+        <button class="btn-primary" onclick="cambiarMiPass()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL RESETEAR PASS (admin) -->
+  <div class="modal-overlay" id="modalResetPass">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Resetear contraseña</h3>
+        <button onclick="closeModal('modalResetPass')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Nueva contraseña para <strong id="resetUserNombre"></strong>.</p>
+        <div class="error" id="resetPassError" style="display:none;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:#FF6B6B;padding:.6rem .8rem;border-radius:8px;font-size:.82rem;margin-bottom:.8rem"></div>
+        <div class="form-group">
+          <label>Nueva contraseña</label>
+          <div class="pass-wrap-mc">
+            <input type="password" id="resetPassNueva" placeholder="Mínimo 6 caracteres">
+            <button type="button" class="pass-toggle-mc" onclick="togglePassMC('resetPassNueva',this)" tabindex="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('modalResetPass')">Cancelar</button>
+        <button class="btn-primary" onclick="confirmarResetPass()">Resetear</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/app.js"></script>
 </body>
 </html>

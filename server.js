@@ -253,8 +253,14 @@ app.post('/api/auth/register', authLimiter, [
       'INSERT INTO usuarios (id,nombre,email,password,rol,terminos_aceptados,terminos_fecha,terminos_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
       [id, nombre, email, hash, rol, true, terminosFecha, '1.0']
     );
-    req.session.userId = id; req.session.nombre = nombre; req.session.rol = rol;
-    res.json({ ok:true, nombre, rol });
+    req.session.regenerate(err => {
+      if (err) return res.status(500).json({ error: 'Error de sesión' });
+      req.session.userId = id; req.session.nombre = nombre; req.session.rol = rol;
+      req.session.save(saveErr => {
+        if (saveErr) return res.status(500).json({ error: 'Error al guardar sesión' });
+        res.json({ ok:true, nombre, rol });
+      });
+    });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Error al registrar' }); }
 });
 
@@ -274,7 +280,10 @@ app.post('/api/auth/login', authLimiter, [
     req.session.regenerate(err => {
       if (err) return res.status(500).json({ error: 'Error de sesión' });
       req.session.userId = user.id; req.session.nombre = user.nombre; req.session.rol = user.rol;
-      res.json({ ok:true, nombre: user.nombre, rol: user.rol });
+      req.session.save(saveErr => {
+        if (saveErr) return res.status(500).json({ error: 'Error al guardar sesión' });
+        res.json({ ok:true, nombre: user.nombre, rol: user.rol });
+      });
     });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Error al ingresar' }); }
 });
