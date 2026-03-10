@@ -46,7 +46,7 @@ function togglePassMC(id, btn) {
 function openModalCambiarPass() {
   ['mpActual','mpNueva','mpConfirm'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('miPassError').style.display = 'none';
-  document.getElementById('modalMiPass').classList.add('active');
+  document.getElementById('modalMiPass').classList.add('open');
 }
 
 async function cambiarMiPass() {
@@ -73,7 +73,7 @@ function abrirResetPass(id, nombre) {
   document.getElementById('resetUserNombre').textContent = nombre;
   document.getElementById('resetPassNueva').value = '';
   document.getElementById('resetPassError').style.display = 'none';
-  document.getElementById('modalResetPass').classList.add('active');
+  document.getElementById('modalResetPass').classList.add('open');
 }
 
 async function confirmarResetPass() {
